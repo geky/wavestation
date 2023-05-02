@@ -86,6 +86,8 @@ fn gen_bubbles(
     size: usize,
     bubble_p: f64,
     hallway_p: f64,
+    smallest: usize,
+    clearance: usize,
 ) -> (usize, usize, Vec<Rc<RefCell<Bubble>>>) {
     // initialize our first bubble with a random size
     let mut bubbles = vec![
@@ -110,12 +112,14 @@ fn gen_bubbles(
             _ => unreachable!(),
         };
         // choose a size
-        let r = 1 + prng.poisson(bubble_p);
+        let r = smallest + prng.poisson(bubble_p);
 
         // calculate new position
-        let hallway = 1 + prng.poisson(hallway_p);
-        let x = parent.borrow().x + dir_x*((parent.borrow().r + r + hallway) as isize);
-        let y = parent.borrow().y + dir_y*((parent.borrow().r + r + hallway) as isize);
+        let hallway = clearance + prng.poisson(hallway_p);
+        let x = parent.borrow().x
+            + dir_x*((parent.borrow().r + r + hallway) as isize);
+        let y = parent.borrow().y
+            + dir_y*((parent.borrow().r + r + hallway) as isize);
 
         // but wait, is there a collision?
         let mut collision = false;
@@ -127,7 +131,7 @@ fn gen_bubbles(
             // check bubble collision
             if
                 distsq((x, y), (bubble.borrow().x, bubble.borrow().y))
-                    <= sq(r + bubble.borrow().r)
+                    <= sq(r + bubble.borrow().r + clearance)
             {
                 collision = true;
                 break;
@@ -306,6 +310,14 @@ struct Opt {
     #[structopt(long, default_value="0.5")]
     hallway_p: f64,
 
+    /// Smallest possible bubble size.
+    #[structopt(long, default_value="1")]
+    smallest: usize,
+
+    /// Required space between bubbles.
+    #[structopt(long, default_value="1")]
+    clearance: usize,
+
     /// Show a small map.
     #[structopt(short, long, alias="small")]
     small_map: bool,
@@ -345,6 +357,8 @@ fn main() {
         opt.size,
         opt.bubble_p,
         opt.hallway_p,
+        opt.smallest,
+        opt.clearance,
     );
     println!("widthxheight: {}x{}", width, height);
 
