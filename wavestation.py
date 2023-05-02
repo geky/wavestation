@@ -17,11 +17,11 @@ class Bubble:
     def __repr__(self):
         return repr((self.x, self.y, self.r))
 
-def main(size, expand_prob):
+def main(size, width, height, expand_prob, expand_off):
     def randsize():
         bsize = 1
         while True:
-            if random.random() < expand_prob:
+            if not (random.random() < expand_prob):
                 break
             bsize +=1
         return bsize
@@ -60,27 +60,26 @@ def main(size, expand_prob):
         r = randsize()
 
         # calculate new position
-        x = parent.x+dirx(dir)*(parent.r+4)
-        y = parent.y+diry(dir)*(parent.r+4)
+        x = parent.x+dirx(dir)*(parent.r+r+expand_off)
+        y = parent.y+diry(dir)*(parent.r+r+expand_off)
 
         # but wait, is there a collision?
         collision = False
         for bubble in bubbles:
-            if dist((x,y), (bubble.x, bubble.y)) <= r+2:
+            if dist((x,y), (bubble.x, bubble.y)) <= r+bubble.r:
                 collision = True
                 break
         if collision:
             continue
 
-
         # no? ok add to our bubbles
         bubbles.append(Bubble(x, y, r, parent))
         used += bubbles[-1].r
 
-    map = {(x,y): ' ' for x, y in it.product(range(80), range(40))}
+    map = {(x,y): ' ' for x, y in it.product(range(width), range(height))}
     for bubble in bubbles:
-        for x, y in it.product(range(80), range(40)):
-            if dist((x,y), (bubble.x+40,bubble.y+20)) <= bubble.r:
+        for x, y in it.product(range(width), range(height)):
+            if dist((x,y), (bubble.x+width//2,bubble.y+height//2)) <= bubble.r:
                 map[(x,y)] = '.'
     for bubble in bubbles:
         if bubble.parent is None:
@@ -89,17 +88,17 @@ def main(size, expand_prob):
             for x in range(
                     min(bubble.x, bubble.parent.x),
                     max(bubble.x, bubble.parent.x)):
-                map[(x+40, bubble.y+20)] = '-'
+                map[(x+width//2, bubble.y+height//2)] = '-'
         if bubble.y != bubble.parent.y:
             for y in range(
                     min(bubble.y, bubble.parent.y),
                     max(bubble.y, bubble.parent.y)):
-                map[(bubble.x+40, y+20)] = '|'
+                map[(bubble.x+width//2, y+height//2)] = '|'
     for bubble in bubbles:
-        map[(bubble.x+40, bubble.y+20)] = 'o'
+        map[(bubble.x+width//2, bubble.y+height//2)] = 'o'
 
-    for y in range(40):
-        print(''.join(map[(x,y)] for x in range(80)))
+    for y in range(height):
+        print(''.join(map[(x,y)] for x in range(width)))
 
 
 if __name__ == "__main__":
@@ -113,10 +112,26 @@ if __name__ == "__main__":
         type=lambda x: int(x, 0),
         help="Size.")
     parser.add_argument(
+        '-W', '--width',
+        type=lambda x: int(x, 0),
+        default=40,
+        help="Render width.")
+    parser.add_argument(
+        '-H', '--height',
+        type=lambda x: int(x, 0),
+        default=20,
+        help="Render height.")
+    parser.add_argument(
         '--expand-prob',
         type=float,
         default=0.5,
         help="Probability to expand capsule.")
+    parser.add_argument(
+        '--expand-off',
+        type=lambda x: int(x, 0),
+        default=1,
+        help="Distance from capsule new capsules are created.")
+
     sys.exit(main(**{k: v
         for k, v in vars(parser.parse_args()).items()
         if v is not None}))
