@@ -9,7 +9,7 @@ use std::ops::Bound;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::cmp;
-use std::collections::{BTreeSet};
+use std::collections::{BTreeSet, BTreeMap, HashMap, hash_map, btree_map};
 use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io;
@@ -294,6 +294,88 @@ fn render_bubble_map(
     (width, height, bmap)
 }
 
+
+// keep track of unresolved constraints
+//
+// this requires a bit of a unique data structure, we need to be
+// able to:
+// 1. insert unique constraints
+// 2. remove unique constraints
+// 3. choose a random constraint with the lowest amount of
+//    possiblities remaining
+//
+// unfortunately since we want this to be deterministic and random
+// we can't just choose an arbitrary item from a BTreeMap/HashMap
+//
+#[derive(Debug)]
+struct ConstraintSet {
+    buckets: BTreeMap<u32, (
+        HashMap<(usize, usize), usize>,
+        Vec<(usize, usize)>
+    )>
+}
+
+impl ConstraintSet {
+    fn new() -> ConstraintSet {
+        ConstraintSet{buckets: BTreeMap::new()}
+    }
+
+    fn insert(&mut self, c: u32, x: usize, y: usize) -> bool {
+        let (ref mut map, ref mut bucket) = self.buckets.entry(c)
+            .or_insert_with(|| (HashMap::new(), Vec::new()));
+        match map.entry((x, y)) {
+            hash_map::Entry::Occupied(_) => false,
+            hash_map::Entry::Vacant(e) => {
+                let i = bucket.len();
+                bucket.push((x, y));
+                e.insert(i);
+                true
+            }
+        }
+    }
+
+    fn remove(&mut self, c: u32, x: usize, y: usize) -> bool {
+        match self.buckets.entry(c) {
+            btree_map::Entry::Occupied(mut e) => {
+                let (ref mut map, ref mut bucket) = e.get_mut();
+                match map.entry((x, y)) {
+                    // one entry? drop bucket
+                    hash_map::Entry::Occupied(_) if bucket.len() <= 1 => {
+                        e.remove();
+                        true
+                    }
+                    // more entries? need to swap-remove, this gets
+                    // a bit messy since we also need to update the
+                    // swapped entry's map entry
+                    hash_map::Entry::Occupied(e) => {
+                        let i = e.remove();
+                        if i < bucket.len()-1 {
+                            let (x_, y_) = bucket.pop().unwrap();
+                            bucket[i] = (x_, y_);
+                            map.insert((x_, y_), i);
+                        }
+                        true
+                    }
+                    hash_map::Entry::Vacant(_) => false,
+                }
+            },
+            btree_map::Entry::Vacant(_) => false,
+        }
+    }
+
+    fn pop(&mut self, prng: &mut Xorshift64) -> Option<(u32, usize, usize)> {
+        match self.buckets.first_key_value() {
+            Some((&c, (_, ref bucket))) => {
+                // in case of tie, choose randomly
+                let (x, y) = bucket[prng.range(0..bucket.len())];
+                self.remove(c, x, y);
+                Some((c, x, y))
+            }
+            None => None,
+        }
+    }
+}
+
 // create a tile map using wave function collapse
 fn wfc_tile_map(
     prng: &mut Xorshift64,
@@ -353,9 +435,9 @@ fn wfc_tile_map(
                 }
             }
         }
-
-        // keep track of unresolved constraints
-        let mut unresolved: BTreeSet<(u32, usize, usize)> = BTreeSet::new();
+        
+        //let mut unresolved: BTreeSet<(u32, usize, usize)> = BTreeSet::new();
+        let mut unresolved: ConstraintSet = ConstraintSet::new();
 
         // add all unresolved to our propagating set, these will be moved
         // into the unresolved tree after constraints are evaluated
@@ -415,8 +497,8 @@ fn wfc_tile_map(
                         continue 'wfc;
                     }
                     // move into different bucket
-                    unresolved.remove(&(count, x, y));
-                    unresolved.insert((count_, x, y));
+                    unresolved.remove(count, x, y);
+                    unresolved.insert(count_, x, y);
                     // propagate constraints to our neighbors
                     if x > 0 { propagating.push((x-1, y)); }
                     if y > 0 { propagating.push((x, y-1)); }
@@ -426,18 +508,8 @@ fn wfc_tile_map(
             }
 
             // do we have unresolved constraints? choose the most-resolved
-            match unresolved.first().copied() {
-                Some((count, _, _)) => {
-                    // do we have a tie?
-                    let mut tie = unresolved.range(
-                        (count, 0, 0) ..= (count, usize::MAX, usize::MAX)
-                    );
-                    // choose randomly
-                    let (_, x, y) = *tie
-                        .nth(prng.range(0..tie.clone().count()))
-                        .unwrap();
-                    unresolved.remove(&(count, x, y));
-
+            match unresolved.pop(prng) {
+                Some((_, x, y)) => {
                     // randomly assign it to one of its options
                     let mut c = cmap[x+y*cwidth];
                     debug_assert!(c.count_ones() > 0);
