@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(unused_imports)]
 
 use structopt::StructOpt;
 use rand::{self, RngCore};
@@ -8,6 +9,13 @@ use std::ops::Bound;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::cmp;
+use std::collections::{HashMap, BTreeMap};
+use std::path::{Path, PathBuf};
+use std::fs::File;
+use std::io;
+
+mod constraints;
+use constraints::*;
 
 
 //// prng stuff ////
@@ -169,8 +177,8 @@ fn gen_bubbles(
             upper_y, bubble.borrow().y+bubble.borrow().r as isize
         );
     }
-    let width = (upper_x - lower_x) as usize;
-    let height = (upper_y - lower_y) as usize;
+    let width = (upper_x+1 - lower_x) as usize;
+    let height = (upper_y+1 - lower_y) as usize;
 
     // shift all bubbles into the range 0,0 => width,height
     for bubble in &bubbles {
@@ -186,12 +194,12 @@ fn render_small_map(
     width: usize,
     height: usize,
     bubbles: &[Rc<RefCell<Bubble>>],
-    small_width: usize,
-    small_height: usize,
-) -> Vec<u8> {
-    let mut smap = vec![b' '; small_width*small_height];
-    let scale_x = small_width as f64 / width as f64;
-    let scale_y = small_height as f64 / height as f64;
+    swidth: usize,
+    sheight: usize,
+) -> (usize, usize, Vec<u8>) {
+    let mut smap = vec![b' '; swidth*sheight];
+    let scale_x = swidth as f64 / width as f64;
+    let scale_y = sheight as f64 / height as f64;
 
     // show hallways
     for bubble in bubbles {
@@ -201,17 +209,17 @@ fn render_small_map(
             let p_x = (parent.borrow().x as f64 * scale_x) as usize;
             let p_y = (parent.borrow().y as f64 * scale_y) as usize;
             for x_ in cmp::min(x, p_x) ..= cmp::max(x, p_x) {
-                if smap[x_+y*small_width] == b'|' {
-                    smap[x_+y*small_width] = b'+';
+                if smap[x_+y*swidth] == b'|' {
+                    smap[x_+y*swidth] = b'+';
                 } else {
-                    smap[x_+y*small_width] = b'-';
+                    smap[x_+y*swidth] = b'-';
                 }
             }
             for y_ in cmp::min(y, p_y) ..= cmp::max(y, p_y) {
-                if smap[x+y_*small_width] == b'-' {
-                    smap[x+y_*small_width] = b'+';
+                if smap[x+y_*swidth] == b'-' {
+                    smap[x+y_*swidth] = b'+';
                 } else {
-                    smap[x+y_*small_width] = b'|';
+                    smap[x+y_*swidth] = b'|';
                 }
             }
         }
@@ -221,10 +229,10 @@ fn render_small_map(
     for bubble in bubbles {
         let x = (bubble.borrow().x as f64 * scale_x) as usize;
         let y = (bubble.borrow().y as f64 * scale_y) as usize;
-        smap[x+y*small_width] = b'o';
+        smap[x+y*swidth] = b'o';
     }
 
-    smap
+    (swidth, sheight, smap)
 }
 
 // render bubble map
@@ -232,7 +240,7 @@ fn render_bubble_map(
     width: usize,
     height: usize,
     bubbles: &[Rc<RefCell<Bubble>>],
-) -> Vec<u8> {
+) -> (usize, usize, Vec<u8>) {
     let mut bmap = vec![b' '; width*height];
 
     // show bubbles
@@ -283,12 +291,203 @@ fn render_bubble_map(
         bmap[x+y*width] = b'o';
     }
 
-    bmap
+    (width, height, bmap)
 }
 
+// create a tile map using wave function collapse
+fn wfc_tile_map(
+    prng: &mut Xorshift64,
+    width: usize,
+    height: usize,
+    bubbles: &[Rc<RefCell<Bubble>>],
+    scale: usize,
+    attempts: usize,
+) -> (bool, usize, usize, Vec<u8>) {
+    // first create and fill a constraint map using our bubbles as a template,
+    // note right now we only know which things are space and which things
+    // aren't space
+    let cwidth = width*scale;
+    let cheight = height*scale;
 
+    let mut cmap = vec![TILE_SPACE; cwidth*cheight];
+    let mut success = false;
 
+    'wfc: for _ in 0..attempts {
+        // mark bubbles as available for all tiles
+        for bubble in bubbles {
+            let x = bubble.borrow().x as usize * scale;
+            let y = bubble.borrow().y as usize * scale;
+            let r = bubble.borrow().r * scale;
+            for y_ in 0..cheight {
+                for x_ in 0..cwidth {
+                    if
+                        distsq(
+                            (x_ as isize, y_ as isize),
+                            (x as isize, y as isize))
+                            <= sq(r)
+                    {
+                        cmap[x_+y_*cwidth] = TILE_NOTSPACE;
+                    }
+                }
+            }
+        }
 
+        // mark hallways as available for all tiles
+        for bubble in bubbles {
+            let x = bubble.borrow().x as usize * scale;
+            let y = bubble.borrow().y as usize * scale;
+            if let Some(parent) = &bubble.borrow().parent {
+                let p_x = parent.borrow().x as usize * scale;
+                let p_y = parent.borrow().y as usize * scale;
+                for x_ in cmp::min(x, p_x) ..= cmp::max(x, p_x) {
+                    for r in 0..(scale+1)/2 {
+                        cmap[x_+(y+r)*cwidth] = TILE_NOTSPACE;
+                        cmap[x_+(y-r)*cwidth] = TILE_NOTSPACE;
+                    }
+                }
+                for y_ in cmp::min(y, p_y) ..= cmp::max(y, p_y) {
+                    for r in 0..(scale+1)/2 {
+                        cmap[(x+r)+y_*cwidth] = TILE_NOTSPACE;
+                        cmap[(x-r)+y_*cwidth] = TILE_NOTSPACE;
+                    }
+                }
+            }
+        }
+
+        // keep track of unresolved constraints
+        let mut unresolved: BTreeMap<u32, Vec<(usize, usize)>>
+            = BTreeMap::new();
+
+        // add all unresolved to our propagating set, these will be moved
+        // into the unresolved tree after constraints are evaluated
+        let mut propagating: Vec<(usize, usize)> = vec![];
+        for y in 0..cheight {
+            for x in 0..cwidth {
+                let c = cmap[x+y*cwidth];
+                if c.count_ones() > 1 {
+                    propagating.push((x, y));
+                }
+            }
+        }
+
+        // core wfc algorithm
+        loop {
+            // propagate new constraints
+            while let Some((x, y)) = propagating.pop() {
+                let mut c = cmap[x+y*cwidth];
+                let count = c.count_ones();
+
+                // for each neighbor
+                let mut constrain = |x_: usize, y_: usize, dir: Dir| {
+                    let c_ = cmap[x_+y_*cwidth];
+
+                    // what does our neighbor allow us to be?
+                    let mut mask = 0;
+                    for i in 0..TILES.len() {
+                        if c_ & (1 << i) != 0 {
+                            mask |= TILES[i].constraints.dir(dir.flip());
+                        }
+                    }
+                    c &= mask;
+
+                    // does any of our possibilities contradict our neighbor?
+                    for i in 0..TILES.len() {
+                        if
+                            c & (1 << i) != 0
+                                && TILES[i].constraints.dir(dir) & c_ == 0
+                        {
+                            c &= !(1 << i);
+                        }
+                    }
+                };
+                
+                if x > 0 { constrain(x-1, y, Dir::W); }
+                if y > 0 { constrain(x, y-1, Dir::N); }
+                if x < cwidth-1 { constrain(x+1, y, Dir::E); }
+                if y < cheight-1 { constrain(x, y+1, Dir::S); }
+
+                // did we actually change anything?
+                if cmap[x+y*cwidth] != c {
+                    // update our map
+                    cmap[x+y*cwidth] = c;
+                    // contradiction? abort the current wfc
+                    if c == 0 {
+                        continue 'wfc;
+                    }
+                    // move into different bucket
+                    if let Some(mut bucket) = unresolved.remove(&count) {
+                        // TODO should this be a hashset
+                        bucket.retain(|(x_, y_)| (*x_, *y_) != (x, y));
+                        if !bucket.is_empty() {
+                            unresolved.insert(count, bucket);
+                        }
+
+                        unresolved.entry(c.count_ones())
+                            .or_insert_with(|| vec![])
+                            .push((x, y));
+                    };
+                    // propagate constraints to our neighbors
+                    if x > 0 { propagating.push((x-1, y)); }
+                    if y > 0 { propagating.push((x, y-1)); }
+                    if x < cwidth-1 { propagating.push((x+1, y)); }
+                    if y < cheight-1 { propagating.push((x, y+1)); }
+                }
+            }
+
+            // do we have unresolved constraints? choose the most-resolved
+            match unresolved.pop_first() {
+                Some((count, mut bucket)) => {
+                    // in case of a tie, choose randomly
+                    let (x, y) = bucket.swap_remove(
+                        prng.range(0..bucket.len())
+                    );
+                    if !bucket.is_empty() {
+                        unresolved.insert(count, bucket);
+                    }
+
+                    // randomly assign it to one of its options
+                    let mut c = cmap[x+y*cwidth];
+                    debug_assert!(c.count_ones() > 0);
+                    let choice = prng.range(0..c.count_ones() as usize);
+                    // figure out which bit this actually is, kinda complicated
+                    for _ in 0..choice {
+                        c &= !(1 << (64-1-c.leading_zeros()));
+                    }
+                    c &= !((1 << (64-1-c.leading_zeros()))-1);
+
+                    // update our map
+                    cmap[x+y*cwidth] = c;
+                    // propagate constraints to our neighbors
+                    if x > 0 { propagating.push((x-1, y)); }
+                    if y > 0 { propagating.push((x, y-1)); }
+                    if x < cwidth-1 { propagating.push((x+1, y)); }
+                    if y < cheight-1 { propagating.push((x, y+1)); }
+                }
+                None => {
+                    success = true;
+                    break 'wfc;
+                }
+            }
+        }
+    }
+
+    // convert our constraint map into a tile map
+    let mut tmap = vec![b'?'; cwidth*cheight*2];
+    for y in 0..cheight {
+        for x in 0..cwidth { 
+            let ascii = match cmap[x+y*cwidth] {
+                0 => b"!!",
+                x if x.count_ones() == 1 => {
+                    TILES[64-1-x.leading_zeros() as usize].ascii
+                },
+                _ => b"??",
+            };
+            tmap[(x+y*cwidth)*2 .. (x+y*cwidth)*2+2].copy_from_slice(ascii);
+        }
+    }
+
+    (success, cwidth*2, cheight, tmap)
+}
 
 
 
@@ -298,6 +497,7 @@ struct Opt {
     /// Size of your spacestation.
     size: usize,
 
+    // TODO allow hex
     /// Optional seed for reproducibility.
     #[structopt(long)]
     seed: Option<u64>,
@@ -326,6 +526,10 @@ struct Opt {
     #[structopt(short, long, alias="bubble")]
     bubble_map: bool,
 
+    /// Show a tiled map
+    #[structopt(short, long, alias="tile")]
+    tile_map: bool,
+
     /// Width of small map.
     #[structopt(long, default_value="8")]
     small_width: usize,
@@ -333,15 +537,27 @@ struct Opt {
     /// Height of small map.
     #[structopt(long, default_value="8")]
     small_height: usize,
+
+    /// Scale for tile map.
+    #[structopt(long, default_value="3")]
+    scale: usize,
+
+    /// Number of attempts at constraining the tile map.
+    ///
+    /// If this fails, the tile set constraints may need
+    /// to be relaxed.
+    #[structopt(long, default_value="1000")]
+    attempts: usize,
 }
 
 fn main() {
     // parse opts
     let mut opt = Opt::from_args();
     // if no maps are explicitly requested assume user wants all of them
-    if !opt.small_map && !opt.bubble_map {
+    if !opt.small_map && !opt.bubble_map && !opt.tile_map {
         opt.small_map = true;
         opt.bubble_map = true;
+        opt.tile_map = true;
     }
     let opt = opt;
 
@@ -360,35 +576,71 @@ fn main() {
         opt.smallest,
         opt.clearance,
     );
-    println!("widthxheight: {}x{}", width, height);
+    println!("generated: {}x{}", width, height);
 
     // render small map
     if opt.small_map {
-        let smap = render_small_map(
-            width, height, &bubbles,
-            opt.small_width, opt.small_height
+        let (swidth, sheight, smap) = render_small_map(
+            width,
+            height,
+            &bubbles,
+            opt.small_width,
+            opt.small_height,
         );
 
-        for y in 0..opt.small_height {
-            for x in 0..opt.small_width {
+        for y in 0..sheight {
+            for x in 0..swidth {
                 print!("{}",
-                    char::from_u32(smap[x+y*opt.small_width] as u32).unwrap()
+                    char::from_u32(smap[x+y*swidth] as u32).unwrap()
                 );
             }
             println!();
         }
     }
 
-    // render bubble map, note we need this for wfc
-    let bmap = render_bubble_map(width, height, &bubbles);
+    // render bubble map
     if opt.bubble_map {
-        for y in 0..height {
-            for x in 0..width {
+        let (bwidth, bheight, bmap) = render_bubble_map(
+            width,
+            height,
+            &bubbles,
+        );
+
+        for y in 0..bheight {
+            for x in 0..bwidth {
                 print!("{}",
-                    char::from_u32(bmap[x+y*width] as u32).unwrap()
+                    char::from_u32(bmap[x+y*bwidth] as u32).unwrap()
                 );
             }
             println!();
+        }
+    }
+
+    // render tile map using wave function collapse
+    if opt.tile_map {
+        let (tsuccess, twidth, theight, tmap) = wfc_tile_map(
+            &mut prng,
+            width,
+            height,
+            &bubbles,
+            opt.scale,
+            opt.attempts,
+        );
+        println!("scaled: {}x{}", twidth, theight);
+
+        for y in 0..theight {
+            for x in 0..twidth {
+                print!("{}",
+                    char::from_u32(tmap[x+y*twidth] as u32).unwrap()
+                );
+            }
+            println!();
+        }
+
+        if !tsuccess {
+            println!("failed to resolve constraints after {} attempts",
+                opt.attempts
+            );
         }
     }
 }
