@@ -9,7 +9,7 @@ use std::ops::Bound;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::cmp;
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeSet};
 use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io;
@@ -355,8 +355,7 @@ fn wfc_tile_map(
         }
 
         // keep track of unresolved constraints
-        let mut unresolved: BTreeMap<u32, Vec<(usize, usize)>>
-            = BTreeMap::new();
+        let mut unresolved: BTreeSet<(u32, usize, usize)> = BTreeSet::new();
 
         // add all unresolved to our propagating set, these will be moved
         // into the unresolved tree after constraints are evaluated
@@ -375,7 +374,6 @@ fn wfc_tile_map(
             // propagate new constraints
             while let Some((x, y)) = propagating.pop() {
                 let mut c = cmap[x+y*cwidth];
-                let count = c.count_ones();
 
                 // for each neighbor
                 let mut constrain = |x_: usize, y_: usize, dir: Dir| {
@@ -409,23 +407,16 @@ fn wfc_tile_map(
                 // did we actually change anything?
                 if cmap[x+y*cwidth] != c {
                     // update our map
+                    let count = cmap[x+y*cwidth].count_ones();
+                    let count_ = c.count_ones();
                     cmap[x+y*cwidth] = c;
                     // contradiction? abort the current wfc
                     if c == 0 {
                         continue 'wfc;
                     }
                     // move into different bucket
-                    if let Some(mut bucket) = unresolved.remove(&count) {
-                        // TODO should this be a hashset
-                        bucket.retain(|(x_, y_)| (*x_, *y_) != (x, y));
-                        if !bucket.is_empty() {
-                            unresolved.insert(count, bucket);
-                        }
-
-                        unresolved.entry(c.count_ones())
-                            .or_insert_with(|| vec![])
-                            .push((x, y));
-                    };
+                    unresolved.remove(&(count, x, y));
+                    unresolved.insert((count_, x, y));
                     // propagate constraints to our neighbors
                     if x > 0 { propagating.push((x-1, y)); }
                     if y > 0 { propagating.push((x, y-1)); }
@@ -435,15 +426,17 @@ fn wfc_tile_map(
             }
 
             // do we have unresolved constraints? choose the most-resolved
-            match unresolved.pop_first() {
-                Some((count, mut bucket)) => {
-                    // in case of a tie, choose randomly
-                    let (x, y) = bucket.swap_remove(
-                        prng.range(0..bucket.len())
+            match unresolved.first().copied() {
+                Some((count, _, _)) => {
+                    // do we have a tie?
+                    let mut tie = unresolved.range(
+                        (count, 0, 0) ..= (count, usize::MAX, usize::MAX)
                     );
-                    if !bucket.is_empty() {
-                        unresolved.insert(count, bucket);
-                    }
+                    // choose randomly
+                    let (_, x, y) = *tie
+                        .nth(prng.range(0..tie.clone().count()))
+                        .unwrap();
+                    unresolved.remove(&(count, x, y));
 
                     // randomly assign it to one of its options
                     let mut c = cmap[x+y*cwidth];
