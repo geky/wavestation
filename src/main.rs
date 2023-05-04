@@ -534,9 +534,9 @@ fn wfc_tile_map(
                     let choice = prng.range(0..c.count_ones() as usize);
                     // figure out which bit this actually is, kinda complicated
                     for _ in 0..choice {
-                        c &= !(1 << (64-1-c.leading_zeros()));
+                        c &= !(1 << (128-1-c.leading_zeros()));
                     }
-                    c &= !((1 << (64-1-c.leading_zeros()))-1);
+                    c &= !((1 << (128-1-c.leading_zeros()))-1);
 
                     // update our map
                     cmap[x+y*cwidth] = c;
@@ -561,7 +561,7 @@ fn wfc_tile_map(
             let ascii = match cmap[x+y*cwidth] {
                 0 => b"!!",
                 x if x.count_ones() == 1 => {
-                    TILES[64-1-x.leading_zeros() as usize].ascii
+                    TILES[128-1-x.leading_zeros() as usize].ascii
                 },
                 _ => b"??",
             };
