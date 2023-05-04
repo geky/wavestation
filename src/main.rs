@@ -13,6 +13,9 @@ use std::collections::{BTreeSet, BTreeMap, HashMap, hash_map, btree_map};
 use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io;
+use std::num;
+use std::str::FromStr;
+use std::time::Instant;
 
 mod constraints;
 use constraints::*;
@@ -89,6 +92,11 @@ fn dist(a: (isize, isize), b: (isize, isize)) -> f64 {
     distsq(a, b).sqrt()
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct BubbleStats {
+    cycles: u64,
+}
+
 fn gen_bubbles(
     prng: &mut Xorshift64,
     size: usize,
@@ -96,7 +104,9 @@ fn gen_bubbles(
     hallway_p: f64,
     smallest: usize,
     clearance: usize,
-) -> (usize, usize, Vec<Rc<RefCell<Bubble>>>) {
+) -> (BubbleStats, usize, usize, Vec<Rc<RefCell<Bubble>>>) {
+    let mut stats = BubbleStats::default();
+
     // initialize our first bubble with a random size
     let mut bubbles = vec![
         Rc::new(RefCell::new(Bubble{
@@ -109,6 +119,7 @@ fn gen_bubbles(
     let mut used = bubbles[0].borrow().r;
 
     while used < size {
+        stats.cycles += 1;
         // choose a bubble
         let parent = &bubbles[prng.range(0..bubbles.len())];
         // choose a direction
@@ -186,7 +197,7 @@ fn gen_bubbles(
         bubble.borrow_mut().y -= lower_y;
     }
 
-    (width, height, bubbles)
+    (stats, width, height, bubbles)
 }
 
 // render small map
@@ -376,6 +387,13 @@ impl ConstraintSet {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct WfcStats {
+    attempts: u64,
+    cycles: u64,
+    propagations: u64,
+}
+
 // create a tile map using wave function collapse
 fn wfc_tile_map(
     prng: &mut Xorshift64,
@@ -383,8 +401,10 @@ fn wfc_tile_map(
     height: usize,
     bubbles: &[Rc<RefCell<Bubble>>],
     scale: usize,
-    attempts: usize,
-) -> (bool, usize, usize, Vec<u8>) {
+    attempts: u64,
+) -> (WfcStats, bool, usize, usize, Vec<u8>) {
+    let mut stats = WfcStats::default();
+
     // first create and fill a constraint map using our bubbles as a template,
     // note right now we only know which things are space and which things
     // aren't space
@@ -395,6 +415,8 @@ fn wfc_tile_map(
     let mut success = false;
 
     'wfc: for _ in 0..attempts {
+        stats.attempts += 1;
+
         // mark bubbles as available for all tiles
         for bubble in bubbles {
             let x = bubble.borrow().x as usize * scale;
@@ -471,8 +493,11 @@ fn wfc_tile_map(
 
         // core wfc algorithm
         loop {
+            stats.cycles += 1;
+
             // propagate new constraints
             while let Some((x, y)) = propagating.pop() {
+                stats.propagations += 1;
                 let mut c = cmap[x+y*cwidth];
 
                 // for each neighbor
@@ -569,10 +594,34 @@ fn wfc_tile_map(
         }
     }
 
-    (success, cwidth*2, cheight, tmap)
+    (stats, success, cwidth*2, cheight, tmap)
 }
 
 
+
+fn parse_u64(s: &str) -> Result<u64, num::ParseIntError> {
+    if s.starts_with("0x") {
+        Ok(u64::from_str_radix(&s[2..], 16)?)
+    } else if s.starts_with("0o") {
+        Ok(u64::from_str_radix(&s[2..], 8)?)
+    } else if s.starts_with("0b") {
+        Ok(u64::from_str_radix(&s[2..], 2)?)
+    } else {
+        Ok(u64::from_str(s)?)
+    }
+}
+
+fn parse_usize(s: &str) -> Result<usize, num::ParseIntError> {
+    if s.starts_with("0x") {
+        Ok(usize::from_str_radix(&s[2..], 16)?)
+    } else if s.starts_with("0o") {
+        Ok(usize::from_str_radix(&s[2..], 8)?)
+    } else if s.starts_with("0b") {
+        Ok(usize::from_str_radix(&s[2..], 2)?)
+    } else {
+        Ok(usize::from_str(s)?)
+    }
+}
 
 #[derive(Debug, StructOpt)]
 #[structopt(rename_all="kebab")]
@@ -582,7 +631,7 @@ struct Opt {
 
     // TODO allow hex
     /// Optional seed for reproducibility.
-    #[structopt(long)]
+    #[structopt(long, parse(try_from_str=parse_u64))]
     seed: Option<u64>,
 
     /// Probability to expand a bubble.
@@ -594,11 +643,11 @@ struct Opt {
     hallway_p: f64,
 
     /// Smallest possible bubble size.
-    #[structopt(long, default_value="1")]
+    #[structopt(long, default_value="1", parse(try_from_str=parse_usize))]
     smallest: usize,
 
     /// Required space between bubbles.
-    #[structopt(long, default_value="1")]
+    #[structopt(long, default_value="1", parse(try_from_str=parse_usize))]
     clearance: usize,
 
     /// Show a small map.
@@ -614,33 +663,32 @@ struct Opt {
     tile_map: bool,
 
     /// Width of small map.
-    #[structopt(long, default_value="8")]
+    #[structopt(long, default_value="8", parse(try_from_str=parse_usize))]
     small_width: usize,
 
     /// Height of small map.
-    #[structopt(long, default_value="8")]
+    #[structopt(long, default_value="8", parse(try_from_str=parse_usize))]
     small_height: usize,
 
     /// Scale for tile map.
-    #[structopt(long, default_value="3")]
+    #[structopt(long, default_value="3", parse(try_from_str=parse_usize))]
     scale: usize,
 
-    /// Number of attempts at constraining the tile map.
+    /// Number of attempts at constraining the tile map before giving up.
     ///
-    /// If this fails, the tile set constraints may need
-    /// to be relaxed.
-    #[structopt(long, default_value="1000")]
-    attempts: usize,
+    /// If this fails, consider also relaxing the tile set constraints.
+    #[structopt(long, default_value="1000", parse(try_from_str=parse_u64))]
+    attempts: u64,
 }
 
 fn main() {
     // parse opts
     let mut opt = Opt::from_args();
-    // if no maps are explicitly requested assume user wants all of them
+    // if no maps are explicitly requested, assume a bubble map
+    //
+    // mostly because this one is my favorite
     if !opt.small_map && !opt.bubble_map && !opt.tile_map {
-        opt.small_map = true;
         opt.bubble_map = true;
-        opt.tile_map = true;
     }
     let opt = opt;
 
@@ -651,7 +699,8 @@ fn main() {
     println!("seed: 0x{:016x}", prng.0);
 
     // generate bubbles
-    let (width, height, bubbles) = gen_bubbles(
+    let start = Instant::now();
+    let (bstats, width, height, bubbles) = gen_bubbles(
         &mut prng,
         opt.size,
         opt.bubble_p,
@@ -659,7 +708,11 @@ fn main() {
         opt.smallest,
         opt.clearance,
     );
-    println!("generated: {}x{}", width, height);
+    let stop = Instant::now();
+    println!("generated: {}x{} tiles, {} bubbles",
+        width, height, bubbles.len()
+    );
+    println!("in: {} cycles, {:?}", bstats.cycles, stop.duration_since(start));
 
     // render small map
     if opt.small_map {
@@ -701,7 +754,8 @@ fn main() {
 
     // render tile map using wave function collapse
     if opt.tile_map {
-        let (tsuccess, twidth, theight, tmap) = wfc_tile_map(
+        let start = Instant::now();
+        let (tstats, tsuccess, twidth, theight, tmap) = wfc_tile_map(
             &mut prng,
             width,
             height,
@@ -709,7 +763,19 @@ fn main() {
             opt.scale,
             opt.attempts,
         );
-        println!("scaled: {}x{}", twidth, theight);
+        let stop = Instant::now();
+        println!("scaled: {}x{} tiles, {} constraints",
+            twidth, theight,
+            // note each tile has 4 directional constraints
+            TILES.len()*4
+        );
+        println!("in: {}/{} attempts, {} cycles, {} propagations, {:?}",
+            tstats.attempts,
+            opt.attempts,
+            tstats.cycles,
+            tstats.propagations,
+            stop.duration_since(start)
+        );
 
         for y in 0..theight {
             for x in 0..twidth {
