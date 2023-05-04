@@ -381,7 +381,7 @@ pub const TILES: [Tile; 82] = [
     //
     Tile::new("lr-n-inwall-a", b"| ", Constraints{
         n: TILE_LR_N_INWALL_A | TILE_LR_N_DOOR | TILE_LR_N_JOINT_A | TILE_LR_N_TEE_A | TILE_LR_E_TEE_B,
-        e: TILE_FLOORISH,
+        e: TILE_FLOORISH | TILE_WALLISH,
         s: TILE_WALLISH | TILE_LR_N_INWALL_A | TILE_LR_N_TEE_A | TILE_LR_N_TEE_B,
         w: TILE_FLOORISH,
     }),
@@ -393,7 +393,7 @@ pub const TILES: [Tile; 82] = [
     }),
     Tile::new("lr-n-inwall-b", b"| ", Constraints{
         n: TILE_WALLISH | TILE_LR_N_INWALL_B | TILE_LR_N_JOINT_B | TILE_LR_N_TEE_B | TILE_LR_N_TEE_B2 | TILE_LR_E_TEE_A | TILE_LR_E_TEE_B2,
-        e: TILE_FLOORISH,
+        e: TILE_FLOORISH | TILE_WALLISH,
         s: TILE_LR_N_INWALL_B | TILE_LR_N_DOOR | TILE_LR_N_TEE_B2,
         w: TILE_FLOORISH,
     }),
@@ -431,7 +431,7 @@ pub const TILES: [Tile; 82] = [
     Tile::new("lr-e-inwall-a", b"--", Constraints{
         n: TILE_FLOORISH,
         e: TILE_LR_E_INWALL_A | TILE_LR_E_DOOR | TILE_LR_E_TEE_A,
-        s: TILE_FLOORISH,
+        s: TILE_FLOORISH | TILE_WALLISH,
         w: TILE_WALLISH | TILE_LR_E_INWALL_A | TILE_LR_N_JOINT_A | TILE_LR_N_TEE_A | TILE_LR_N_TEE_B2 | TILE_LR_E_TEE_A | TILE_LR_E_TEE_B,
     }),
     Tile::new("lr-e-door", b"  ", Constraints{
@@ -443,7 +443,7 @@ pub const TILES: [Tile; 82] = [
     Tile::new("lr-e-inwall-b", b"--", Constraints{
         n: TILE_FLOORISH,
         e: TILE_WALLISH | TILE_LR_E_INWALL_B | TILE_LR_N_JOINT_B | TILE_LR_E_TEE_B | TILE_LR_E_TEE_B2,
-        s: TILE_FLOORISH,
+        s: TILE_FLOORISH | TILE_WALLISH,
         w: TILE_LR_E_INWALL_B | TILE_LR_E_DOOR | TILE_LR_N_JOINT_B | TILE_LR_E_TEE_B2,
     }),
     Tile::new("lr-e-tee-a", b"+-", Constraints{
@@ -469,7 +469,7 @@ pub const TILES: [Tile; 82] = [
     Tile::new("ll-e-inwall-a", b"--", Constraints{
         n: TILE_FLOORISH,
         e: TILE_LL_E_INWALL_A | TILE_LL_E_DOOR | TILE_LL_E_JOINT_A | TILE_LL_E_TEE_A | TILE_LL_S_TEE_B,
-        s: TILE_FLOORISH,
+        s: TILE_FLOORISH | TILE_WALLISH,
         w: TILE_WALLISH | TILE_LL_E_INWALL_A | TILE_LL_E_TEE_A | TILE_LL_E_TEE_B,
     }),
     Tile::new("ll-e-door", b"  ", Constraints{
@@ -481,7 +481,7 @@ pub const TILES: [Tile; 82] = [
     Tile::new("ll-e-inwall-b", b"--", Constraints{
         n: TILE_FLOORISH,
         e: TILE_WALLISH | TILE_LL_E_INWALL_B | TILE_LL_E_JOINT_B | TILE_LL_E_TEE_B | TILE_LL_E_TEE_B2 | TILE_LL_S_TEE_A | TILE_LL_S_TEE_B2,
-        s: TILE_FLOORISH,
+        s: TILE_FLOORISH | TILE_WALLISH,
         w: TILE_LL_E_INWALL_B | TILE_LL_E_DOOR | TILE_LL_E_TEE_B2,
     }),
     Tile::new("ll-e-joint-a", b"-.", Constraints{
@@ -519,7 +519,7 @@ pub const TILES: [Tile; 82] = [
         n: TILE_WALLISH | TILE_LL_S_INWALL_A | TILE_LL_E_JOINT_A | TILE_LL_E_TEE_A | TILE_LL_E_TEE_B2 | TILE_LL_S_TEE_A | TILE_LL_S_TEE_B,
         e: TILE_FLOORISH,
         s: TILE_LL_S_INWALL_A | TILE_LL_S_DOOR | TILE_LL_S_TEE_A,
-        w: TILE_FLOORISH,
+        w: TILE_FLOORISH | TILE_WALLISH,
     }),
     Tile::new("ll-s-door", b"  ", Constraints{
         n: TILE_LL_S_INWALL_A,
@@ -531,7 +531,7 @@ pub const TILES: [Tile; 82] = [
         n: TILE_LL_S_INWALL_B | TILE_LL_S_DOOR | TILE_LL_E_JOINT_B | TILE_LL_S_TEE_B2,
         e: TILE_FLOORISH,
         s: TILE_WALLISH | TILE_LL_S_INWALL_B | TILE_LL_E_JOINT_B | TILE_LL_S_TEE_B | TILE_LL_S_TEE_B2,
-        w: TILE_FLOORISH,
+        w: TILE_FLOORISH | TILE_WALLISH,
     }),
     Tile::new("ll-s-tee-a", b"-+", Constraints{
         n: TILE_LL_S_INWALL_A,
@@ -557,7 +557,7 @@ pub const TILES: [Tile; 82] = [
         n: TILE_WALLISH | TILE_UL_S_INWALL_A | TILE_UL_S_TEE_A | TILE_UL_S_TEE_B,
         e: TILE_FLOORISH,
         s: TILE_UL_S_INWALL_A | TILE_UL_S_DOOR | TILE_UL_S_JOINT_A | TILE_UL_S_TEE_A | TILE_UL_W_TEE_B,
-        w: TILE_FLOORISH,
+        w: TILE_FLOORISH | TILE_WALLISH,
     }),
     Tile::new("ul-s-door", b"  ", Constraints{
         n: TILE_UL_S_INWALL_A,
@@ -569,7 +569,7 @@ pub const TILES: [Tile; 82] = [
         n: TILE_UL_S_INWALL_B | TILE_UL_S_DOOR | TILE_UL_S_TEE_B2,
         e: TILE_FLOORISH,
         s: TILE_WALLISH | TILE_UL_S_INWALL_B | TILE_UL_S_JOINT_B | TILE_UL_S_TEE_B | TILE_UL_S_TEE_B2 | TILE_UL_W_TEE_A | TILE_UL_W_TEE_B2,
-        w: TILE_FLOORISH,
+        w: TILE_FLOORISH | TILE_WALLISH,
     }),
     Tile::new("ul-s-joint-a", b"-'", Constraints{
         n: TILE_UL_S_INWALL_A,
@@ -603,7 +603,7 @@ pub const TILES: [Tile; 82] = [
     }),
 
     Tile::new("ul-w-inwall-a", b"--", Constraints{
-        n: TILE_FLOORISH,
+        n: TILE_FLOORISH | TILE_WALLISH,
         e: TILE_WALLISH | TILE_UL_W_INWALL_A | TILE_UL_S_JOINT_A | TILE_UL_S_TEE_A | TILE_UL_S_TEE_B2 | TILE_UL_W_TEE_A | TILE_UL_W_TEE_B,
         s: TILE_FLOORISH,
         w: TILE_UL_W_INWALL_A | TILE_UL_W_DOOR | TILE_UL_W_TEE_A,
@@ -615,7 +615,7 @@ pub const TILES: [Tile; 82] = [
         w: TILE_UL_W_INWALL_B,
     }),
     Tile::new("ul-w-inwall-b", b"--", Constraints{
-        n: TILE_FLOORISH,
+        n: TILE_FLOORISH | TILE_WALLISH,
         e: TILE_UL_W_INWALL_B | TILE_UL_W_DOOR | TILE_UL_S_JOINT_B | TILE_UL_W_TEE_B2,
         s: TILE_FLOORISH,
         w: TILE_WALLISH | TILE_UL_W_INWALL_B | TILE_UL_S_JOINT_B | TILE_UL_W_TEE_B | TILE_UL_W_TEE_B2,
@@ -641,7 +641,7 @@ pub const TILES: [Tile; 82] = [
 
     //
     Tile::new("ur-w-inwall-a", b"--", Constraints{
-        n: TILE_FLOORISH,
+        n: TILE_FLOORISH | TILE_WALLISH,
         e: TILE_WALLISH | TILE_UR_W_INWALL_A | TILE_UR_W_TEE_A | TILE_UR_W_TEE_B,
         s: TILE_FLOORISH,
         w: TILE_UR_W_INWALL_A | TILE_UR_W_DOOR | TILE_UR_W_JOINT_A | TILE_UR_W_TEE_A | TILE_UR_N_TEE_B,
@@ -653,7 +653,7 @@ pub const TILES: [Tile; 82] = [
         w: TILE_UR_W_INWALL_B,
     }),
     Tile::new("ur-w-inwall-b", b"--", Constraints{
-        n: TILE_FLOORISH,
+        n: TILE_FLOORISH | TILE_WALLISH,
         e: TILE_UR_W_INWALL_B | TILE_UR_W_DOOR | TILE_UR_W_TEE_B2,
         s: TILE_FLOORISH,
         w: TILE_WALLISH | TILE_UR_W_INWALL_B | TILE_UR_W_JOINT_B | TILE_UR_W_TEE_B | TILE_UR_W_TEE_B2 | TILE_UR_N_TEE_A | TILE_UR_N_TEE_B2,
@@ -691,7 +691,7 @@ pub const TILES: [Tile; 82] = [
 
     Tile::new("ur-n-inwall-a", b"| ", Constraints{
         n: TILE_UR_N_INWALL_A | TILE_UR_N_DOOR | TILE_UR_N_TEE_A,
-        e: TILE_FLOORISH,
+        e: TILE_FLOORISH | TILE_WALLISH,
         s: TILE_WALLISH | TILE_UR_N_INWALL_A | TILE_UR_W_JOINT_A | TILE_UR_W_TEE_A | TILE_UR_W_TEE_B2 | TILE_UR_N_TEE_A | TILE_UR_N_TEE_B,
         w: TILE_FLOORISH,
     }),
@@ -703,7 +703,7 @@ pub const TILES: [Tile; 82] = [
     }),
     Tile::new("ur-n-inwall-b", b"| ", Constraints{
         n: TILE_WALLISH | TILE_UR_N_INWALL_B | TILE_UR_W_JOINT_B | TILE_UR_N_TEE_B | TILE_UR_N_TEE_B2,
-        e: TILE_FLOORISH,
+        e: TILE_FLOORISH | TILE_WALLISH,
         s: TILE_UR_N_INWALL_B | TILE_UR_N_DOOR | TILE_UR_W_JOINT_B | TILE_UR_N_TEE_B2,
         w: TILE_FLOORISH,
     }),
