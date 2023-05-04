@@ -408,8 +408,7 @@ fn wfc_tile_map(
                             (x as isize, y as isize))
                             <= sq(r)
                     {
-                        cmap[x_+y_*cwidth]
-                            = TILE_ALL & !TILE_SPACE & !TILE_FLOOR;
+                        cmap[x_+y_*cwidth] = TILE_ALL & !TILE_SPACE;
                     }
                 }
             }
@@ -424,18 +423,14 @@ fn wfc_tile_map(
                 let p_y = parent.borrow().y as usize * scale;
                 for x_ in cmp::min(x, p_x) ..= cmp::max(x, p_x) {
                     for r in 0..(scale+1)/2 {
-                        cmap[x_+(y+r)*cwidth]
-                            = TILE_ALL & !TILE_SPACE & !TILE_FLOOR;
-                        cmap[x_+(y-r)*cwidth]
-                            = TILE_ALL & !TILE_SPACE & !TILE_FLOOR;
+                        cmap[x_+(y+r)*cwidth] = TILE_ALL & !TILE_SPACE;
+                        cmap[x_+(y-r)*cwidth] = TILE_ALL & !TILE_SPACE;
                     }
                 }
                 for y_ in cmp::min(y, p_y) ..= cmp::max(y, p_y) {
                     for r in 0..(scale+1)/2 {
-                        cmap[(x+r)+y_*cwidth]
-                            = TILE_ALL & !TILE_SPACE & !TILE_FLOOR;
-                        cmap[(x-r)+y_*cwidth]
-                            = TILE_ALL & !TILE_SPACE & !TILE_FLOOR;
+                        cmap[(x+r)+y_*cwidth] = TILE_ALL & !TILE_SPACE;
+                        cmap[(x-r)+y_*cwidth] = TILE_ALL & !TILE_SPACE;
                     }
                 }
             }
