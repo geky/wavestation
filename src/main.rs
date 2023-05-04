@@ -408,13 +408,14 @@ fn wfc_tile_map(
                             (x as isize, y as isize))
                             <= sq(r)
                     {
-                        cmap[x_+y_*cwidth] = TILE_NOTSPACE;
+                        cmap[x_+y_*cwidth]
+                            = TILE_ALL & !TILE_SPACE & !TILE_FLOOR;
                     }
                 }
             }
         }
 
-        // mark hallways as available for all tiles
+        // mark hallway walls as available for all tiles
         for bubble in bubbles {
             let x = bubble.borrow().x as usize * scale;
             let y = bubble.borrow().y as usize * scale;
@@ -423,15 +424,37 @@ fn wfc_tile_map(
                 let p_y = parent.borrow().y as usize * scale;
                 for x_ in cmp::min(x, p_x) ..= cmp::max(x, p_x) {
                     for r in 0..(scale+1)/2 {
-                        cmap[x_+(y+r)*cwidth] = TILE_NOTSPACE;
-                        cmap[x_+(y-r)*cwidth] = TILE_NOTSPACE;
+                        cmap[x_+(y+r)*cwidth]
+                            = TILE_ALL & !TILE_SPACE & !TILE_FLOOR;
+                        cmap[x_+(y-r)*cwidth]
+                            = TILE_ALL & !TILE_SPACE & !TILE_FLOOR;
                     }
                 }
                 for y_ in cmp::min(y, p_y) ..= cmp::max(y, p_y) {
                     for r in 0..(scale+1)/2 {
-                        cmap[(x+r)+y_*cwidth] = TILE_NOTSPACE;
-                        cmap[(x-r)+y_*cwidth] = TILE_NOTSPACE;
+                        cmap[(x+r)+y_*cwidth]
+                            = TILE_ALL & !TILE_SPACE & !TILE_FLOOR;
+                        cmap[(x-r)+y_*cwidth]
+                            = TILE_ALL & !TILE_SPACE & !TILE_FLOOR;
                     }
+                }
+            }
+        }
+
+        // but hallways themselves as required floor
+        for bubble in bubbles {
+            let x = bubble.borrow().x as usize * scale;
+            let y = bubble.borrow().y as usize * scale;
+            if let Some(parent) = &bubble.borrow().parent {
+                let p_x = parent.borrow().x as usize * scale;
+                let p_y = parent.borrow().y as usize * scale;
+                for x_ in cmp::min(x, p_x) ..= cmp::max(x, p_x) {
+                    cmap[x_+y*cwidth] = TILE_FLOOR;
+                    cmap[x_+y*cwidth] = TILE_FLOOR;
+                }
+                for y_ in cmp::min(y, p_y) ..= cmp::max(y, p_y) {
+                    cmap[x+y_*cwidth] = TILE_FLOOR;
+                    cmap[x+y_*cwidth] = TILE_FLOOR;
                 }
             }
         }

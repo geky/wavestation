@@ -81,41 +81,56 @@ pub const TILE_DEGENERATE_S : u64 = 1 << 3;
 pub const TILE_DEGENERATE_W : u64 = 1 << 4;
 
 pub const TILE_FLOOR        : u64 = 1 << 5;
+pub const TILE_N_FLOOR2     : u64 = 1 << 6;
+pub const TILE_E_FLOOR2     : u64 = 1 << 7;
+pub const TILE_S_FLOOR2     : u64 = 1 << 8;
+pub const TILE_W_FLOOR2     : u64 = 1 << 9;
 
-pub const TILE_N_WALL       : u64 = 1 << 6;
-pub const TILE_E_WALL       : u64 = 1 << 7;
-pub const TILE_S_WALL       : u64 = 1 << 8;
-pub const TILE_W_WALL       : u64 = 1 << 9;
+pub const TILE_N_WALL       : u64 = 1 << 10;
+pub const TILE_E_WALL       : u64 = 1 << 11;
+pub const TILE_S_WALL       : u64 = 1 << 12;
+pub const TILE_W_WALL       : u64 = 1 << 13;
 
-pub const TILE_NE_WALL      : u64 = 1 << 10;
-pub const TILE_SE_WALL      : u64 = 1 << 11;
-pub const TILE_SW_WALL      : u64 = 1 << 12;
-pub const TILE_NW_WALL      : u64 = 1 << 13;
+pub const TILE_NE_WALL      : u64 = 1 << 14;
+pub const TILE_SE_WALL      : u64 = 1 << 15;
+pub const TILE_SW_WALL      : u64 = 1 << 16;
+pub const TILE_NW_WALL      : u64 = 1 << 17;
 
-pub const TILE_NE_WALL2     : u64 = 1 << 14;
-pub const TILE_SE_WALL2     : u64 = 1 << 15;
-pub const TILE_SW_WALL2     : u64 = 1 << 16;
-pub const TILE_NW_WALL2     : u64 = 1 << 17;
+pub const TILE_NE_WALL2     : u64 = 1 << 18;
+pub const TILE_SE_WALL2     : u64 = 1 << 19;
+pub const TILE_SW_WALL2     : u64 = 1 << 20;
+pub const TILE_NW_WALL2     : u64 = 1 << 21;
 
-pub const TILE_NE_WALL3     : u64 = 1 << 18;
-pub const TILE_SE_WALL3     : u64 = 1 << 19;
-pub const TILE_SW_WALL3     : u64 = 1 << 20;
-pub const TILE_NW_WALL3     : u64 = 1 << 21;
+pub const TILE_NE_WALL3     : u64 = 1 << 22;
+pub const TILE_SE_WALL3     : u64 = 1 << 23;
+pub const TILE_SW_WALL3     : u64 = 1 << 24;
+pub const TILE_NW_WALL3     : u64 = 1 << 25;
 
-pub const TILE_NE_WALL4     : u64 = 1 << 22;
-pub const TILE_SE_WALL4     : u64 = 1 << 23;
-pub const TILE_SW_WALL4     : u64 = 1 << 24;
-pub const TILE_NW_WALL4     : u64 = 1 << 25;
+pub const TILE_NE_WALL4     : u64 = 1 << 26;
+pub const TILE_SE_WALL4     : u64 = 1 << 27;
+pub const TILE_SW_WALL4     : u64 = 1 << 28;
+pub const TILE_NW_WALL4     : u64 = 1 << 29;
 
-pub const TILE_BARREL_N     : u64 = 1 << 26;
-pub const TILE_BARREL_E     : u64 = 1 << 27;
-pub const TILE_BARREL_S     : u64 = 1 << 28;
-pub const TILE_BARREL_W     : u64 = 1 << 29;
+pub const TILE_N_DOORA      : u64 = 1 << 30;
+pub const TILE_E_DOORA      : u64 = 1 << 31;
+pub const TILE_N_DOORB      : u64 = 1 << 32;
+pub const TILE_E_DOORB      : u64 = 1 << 33;
 
-pub const TILE_BARREL_NE    : u64 = 1 << 30;
-pub const TILE_BARREL_SE    : u64 = 1 << 31;
-pub const TILE_BARREL_SW    : u64 = 1 << 32;
-pub const TILE_BARREL_NW    : u64 = 1 << 33;
+pub const TILE_N_INWALLA    : u64 = 1 << 34;
+pub const TILE_E_INWALLA    : u64 = 1 << 35;
+
+pub const TILE_NE_JOINTA    : u64 = 1 << 36;
+pub const TILE_SE_JOINTA    : u64 = 1 << 37;
+pub const TILE_SW_JOINTA    : u64 = 1 << 38;
+pub const TILE_NW_JOINTA    : u64 = 1 << 39;
+
+pub const TILE_N_INWALLB    : u64 = 1 << 40;
+pub const TILE_E_INWALLB    : u64 = 1 << 41;
+
+pub const TILE_NE_JOINTB    : u64 = 1 << 42;
+pub const TILE_SE_JOINTB    : u64 = 1 << 43;
+pub const TILE_SW_JOINTB    : u64 = 1 << 44;
+pub const TILE_NW_JOINTB    : u64 = 1 << 45;
 
 // some common constraints
 pub const TILE_SPACEISH: u64
@@ -125,19 +140,28 @@ pub const TILE_SPACEISH: u64
     | TILE_DEGENERATE_S
     | TILE_DEGENERATE_W;
 
-pub const TILE_BARRELISH: u64
-    = TILE_BARREL_N
-    | TILE_BARREL_E
-    | TILE_BARREL_S
-    | TILE_BARREL_W
-    | TILE_BARREL_NE
-    | TILE_BARREL_SE
-    | TILE_BARREL_SW
-    | TILE_BARREL_NW;
-
 pub const TILE_FLOORISH: u64
     = TILE_FLOOR
-    | TILE_BARRELISH;
+    | TILE_N_FLOOR2
+    | TILE_E_FLOOR2
+    | TILE_S_FLOOR2
+    | TILE_W_FLOOR2
+    | TILE_N_DOORA
+    | TILE_E_DOORA
+    | TILE_N_DOORB
+    | TILE_E_DOORB;
+
+pub const TILE_JOINTISHA: u64
+    = TILE_NE_JOINTA
+    | TILE_SE_JOINTA
+    | TILE_SW_JOINTA
+    | TILE_NW_JOINTA;
+
+pub const TILE_JOINTISHB: u64
+    = TILE_NE_JOINTB
+    | TILE_SE_JOINTB
+    | TILE_SW_JOINTB
+    | TILE_NW_JOINTB;
 
 pub const TILE_WALLISH: u64
     = TILE_N_WALL
@@ -162,7 +186,7 @@ pub const TILE_WALLISH: u64
     | TILE_NW_WALL4;
 
 // all tiles in our system
-pub const TILES: [Tile; 26] = [
+pub const TILES: [Tile; 46] = [
     // space
     Tile::new("space", b"  ", Constraints::ALL),
 
@@ -195,6 +219,30 @@ pub const TILES: [Tile; 26] = [
     Tile::new("floor", b"  ", Constraints{
         n: !TILE_SPACEISH,
         e: !TILE_SPACEISH,
+        s: !TILE_SPACEISH,
+        w: !TILE_SPACEISH,
+    }),
+    Tile::new("n-floor2", b"  ", Constraints{
+        n: !TILE_SPACEISH,
+        e: !TILE_SPACEISH,
+        s: TILE_FLOORISH & !TILE_S_FLOOR2,
+        w: !TILE_SPACEISH,
+    }),
+    Tile::new("e-floor2", b"  ", Constraints{
+        n: !TILE_SPACEISH,
+        e: !TILE_SPACEISH,
+        s: !TILE_SPACEISH,
+        w: TILE_FLOORISH & !TILE_W_FLOOR2,
+    }),
+    Tile::new("s-floor2", b"  ", Constraints{
+        n: TILE_FLOORISH & !TILE_N_FLOOR2,
+        e: !TILE_SPACEISH,
+        s: !TILE_SPACEISH,
+        w: !TILE_SPACEISH,
+    }),
+    Tile::new("w-floor2", b"  ", Constraints{
+        n: !TILE_SPACEISH,
+        e: TILE_FLOORISH & !TILE_E_FLOOR2,
         s: !TILE_SPACEISH,
         w: !TILE_SPACEISH,
     }),
@@ -324,8 +372,109 @@ pub const TILES: [Tile; 26] = [
         s: !TILE_SPACEISH,
         w: TILE_NW_WALL|TILE_N_WALL,
     }),
+
+    // inner wall things
+    Tile::new("n-doora", b"  ", Constraints{
+        n: TILE_FLOORISH,
+        e: TILE_N_INWALLA,
+        s: TILE_FLOORISH,
+        w: TILE_N_INWALLB,
+    }),
+    Tile::new("e-doora", b"  ", Constraints{
+        n: 0, //TILE_E_INWALLA,
+        e: TILE_FLOORISH,
+        s: TILE_E_INWALLB,
+        w: TILE_FLOORISH,
+    }),
+    Tile::new("n-doorb", b"  ", Constraints{
+        n: TILE_FLOORISH,
+        e: 0, //TILE_N_INWALLB,
+        s: TILE_FLOORISH,
+        w: TILE_N_INWALLA,
+    }),
+    Tile::new("e-doorb", b"  ", Constraints{
+        n: 0, //TILE_E_INWALLB,
+        e: TILE_FLOORISH,
+        s: TILE_E_INWALLA,
+        w: TILE_FLOORISH,
+    }),
+
+    Tile::new("n-inwalla", b"==", Constraints{
+        n: TILE_FLOORISH,
+        e: TILE_WALLISH | TILE_N_INWALLA | TILE_N_DOORA | TILE_N_DOORB | TILE_JOINTISHA,
+        s: TILE_FLOORISH,
+        w: TILE_WALLISH | TILE_N_INWALLA | TILE_N_DOORA | TILE_N_DOORB | TILE_JOINTISHA,
+    }),
+    Tile::new("e-inwalla", b"||", Constraints{
+        n: TILE_WALLISH | TILE_E_INWALLA | TILE_E_DOORA | TILE_E_DOORB | TILE_JOINTISHA,
+        e: TILE_FLOORISH,
+        s: TILE_WALLISH | TILE_E_INWALLA | TILE_E_DOORA | TILE_E_DOORB | TILE_JOINTISHA,
+        w: TILE_FLOORISH,
+    }),
+
+    Tile::new("ne-jointa", b"++", Constraints{
+        n: TILE_E_INWALLA,
+        e: TILE_N_INWALLA,
+        s: TILE_FLOORISH | TILE_E_INWALLA,
+        w: TILE_FLOORISH | TILE_N_INWALLA,
+    }),
+    Tile::new("se-jointa", b"++", Constraints{
+        n: TILE_FLOORISH | TILE_E_INWALLA,
+        e: TILE_N_INWALLA,
+        s: TILE_E_INWALLA,
+        w: TILE_FLOORISH | TILE_N_INWALLA,
+    }),
+    Tile::new("sw-jointa", b"++", Constraints{
+        n: TILE_FLOORISH | TILE_E_INWALLA,
+        e: TILE_FLOORISH | TILE_N_INWALLA,
+        s: TILE_E_INWALLA,
+        w: TILE_N_INWALLA,
+    }),
+    Tile::new("nw-jointa", b"++", Constraints{
+        n: TILE_E_INWALLA,
+        e: TILE_FLOORISH | TILE_N_INWALLA,
+        s: TILE_FLOORISH | TILE_E_INWALLA,
+        w: TILE_N_INWALLA,
+    }),
+
+    Tile::new("n-inwallb", b"=b", Constraints{
+        n: TILE_FLOORISH,
+        e: TILE_WALLISH | TILE_N_INWALLB | TILE_N_DOORA | TILE_N_DOORB | TILE_JOINTISHB,
+        s: TILE_FLOORISH,
+        w: TILE_WALLISH | TILE_N_INWALLB | TILE_N_DOORA | TILE_N_DOORB | TILE_JOINTISHB,
+    }),
+    Tile::new("e-inwallb", b"|b", Constraints{
+        n: TILE_WALLISH | TILE_E_INWALLB | TILE_E_DOORA | TILE_E_DOORB | TILE_JOINTISHB,
+        e: TILE_FLOORISH,
+        s: TILE_WALLISH | TILE_E_INWALLB | TILE_E_DOORA | TILE_E_DOORB | TILE_JOINTISHB,
+        w: TILE_FLOORISH,
+    }),
+
+    Tile::new("ne-jointb", b"+b", Constraints{
+        n: TILE_E_INWALLB,
+        e: TILE_N_INWALLB,
+        s: TILE_FLOORISH | TILE_E_INWALLB,
+        w: TILE_FLOORISH | TILE_N_INWALLB,
+    }),
+    Tile::new("se-jointb", b"+b", Constraints{
+        n: TILE_FLOORISH | TILE_E_INWALLB,
+        e: TILE_N_INWALLB,
+        s: TILE_E_INWALLB,
+        w: TILE_FLOORISH | TILE_N_INWALLB,
+    }),
+    Tile::new("sw-jointb", b"+b", Constraints{
+        n: TILE_FLOORISH | TILE_E_INWALLB,
+        e: TILE_FLOORISH | TILE_N_INWALLB,
+        s: TILE_E_INWALLB,
+        w: TILE_N_INWALLB,
+    }),
+    Tile::new("nw-jointb", b"+b", Constraints{
+        n: TILE_E_INWALLB,
+        e: TILE_FLOORISH | TILE_N_INWALLB,
+        s: TILE_FLOORISH | TILE_E_INWALLB,
+        w: TILE_N_INWALLB,
+    }),
 ];
 
 // a convenience mask for all tiles
 pub const TILE_ALL: u64 = (1u64 << TILES.len()) - 1;
-pub const TILE_NOTSPACE: u64 = TILE_ALL & !TILE_SPACE;

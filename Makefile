@@ -1,7 +1,7 @@
 .PHONY: all build
 all build:
-	cargo build
-	cp target/debug/wavestation wavestation
+	cargo build --release
+	cp target/release/wavestation wavestation
 
 .PHONY: run
 run:
@@ -10,4 +10,4 @@ run:
 .PHONY: clean
 clean:
 	cargo clean
-	rm wavestation
+	rm -f wavestation
