@@ -203,8 +203,10 @@ impl WaveStation {
         self_
     }
 
-    fn gen_bubbles(&mut self, size: usize) {
+    fn gen_bubbles(&mut self, delta: usize) {
         let start = Instant::now();
+
+        let size = self.size + delta;
         while self.size < size {
             self.bubble_cycles += 1;
             // choose a bubble
@@ -259,11 +261,6 @@ impl WaveStation {
 
             // keep track of new bubbles if we have a constraint map
             if self.cmap.len() > 0 {
-                // since we change both our bubble and our parent, mark
-                // both as needing an update
-                if let Some(parent) = &bubble.borrow().parent {
-                    self.delta.push(parent.clone());
-                }
                 self.delta.push(bubble);
             }
         }
@@ -313,8 +310,9 @@ impl WaveStation {
             for y in 0..self.cheight {
                 for x in 0..self.cwidth {
                     cmap[
-                        (x as isize-lower_x) as usize
-                        + (y as isize-lower_y) as usize*cwidth
+                        (x as isize-lower_x*self.scale as isize) as usize
+                        + (y as isize-lower_y*self.scale as isize) as usize
+                            *cwidth
                     ] = self.cmap[x+y*self.cwidth];
                 }
             }
@@ -548,10 +546,36 @@ impl WaveStation {
                     }
                 }
             }
+
+            // also mark parent bubbles as not space, needed
+            // if we're generating incrementally
+            //
+            // basically we need to throw out our parent's state
+            // to construct a hallway
+            if let Some(parent) = &bubble.borrow().parent {
+                let x = parent.borrow().x as usize * self.scale;
+                let y = parent.borrow().y as usize * self.scale;
+                let r = parent.borrow().r * self.scale;
+                for y_ in 0..self.cheight {
+                    for x_ in 0..self.cwidth {
+                        if
+                            distsq(
+                                (x_ as isize, y_ as isize),
+                                (x as isize, y as isize))
+                                <= sq(r)
+                        {
+                            self.cmap[x_+y_*self.cwidth]
+                                = TILE_ALL & !TILE_SPACE;
+                        }
+                    }
+                }
+            }
         }
 
         // mark hallway walls as not space
-        for bubble in delta {
+        //
+        // note we need to consider all hallways that collide with our bubbles
+        for bubble in &self.bubbles {
             let x = bubble.borrow().x as usize * self.scale;
             let y = bubble.borrow().y as usize * self.scale;
             if let Some(parent) = &bubble.borrow().parent {
@@ -577,9 +601,12 @@ impl WaveStation {
         }
 
         // but hallways themselves as required floor
-        for bubble in delta {
+        //
+        // note we need to consider all hallways that collide with our bubbles
+        for bubble in &self.bubbles {
             let x = bubble.borrow().x as usize * self.scale;
             let y = bubble.borrow().y as usize * self.scale;
+            self.cmap[x+y*self.cwidth] = TILE_FLOOR;
             if let Some(parent) = &bubble.borrow().parent {
                 let p_x = parent.borrow().x as usize * self.scale;
                 let p_y = parent.borrow().y as usize * self.scale;
@@ -597,6 +624,18 @@ impl WaveStation {
         // reset our delta, these bubbles are now at least represented
         // in our constraint map
         self.delta.clear();
+
+        // TODO rm me
+        let (twidth, theight, tmap) = self.render_tile_map();
+
+        for y in 0..theight {
+            for x in 0..twidth {
+                print!("{}",
+                    char::from_u32(tmap[x+y*twidth] as u32).unwrap()
+                );
+            }
+            println!();
+        }
 
 
         // copy our constraint map for the core wfc algorithm, this allows
@@ -829,6 +868,13 @@ struct Opt {
     /// If this fails, consider also relaxing the tile set constraints.
     #[structopt(long, default_value="1000", parse(try_from_str=parse_u64))]
     attempts: u64,
+
+    /// How much station size to generate at once
+    ///
+    /// Larger values may increase performance, but at a risk of increasing
+    /// wfc failure
+    #[structopt(long, default_value="1", parse(try_from_str=parse_usize))]
+    chunk_size: usize,
 }
 
 fn main() {
@@ -855,14 +901,52 @@ fn main() {
     );
     println!("seed: 0x{:016x}", ws.seed);
 
-    // generate bubbles
-    ws.gen_bubbles(opt.size);
-    println!("generated: {}x{} tiles, {} bubbles",
-        ws.width, ws.height, ws.bubbles.len()
+    // generate in chunks to avoid wfc failures
+    let mut success = true;
+    loop {
+        // generate bubbles
+        if opt.size > ws.size {
+            ws.gen_bubbles(cmp::min(opt.chunk_size, opt.size-ws.size));
+        }
+
+        if opt.tile_map {
+            // perform wfc on any new bubbles
+            //
+            // new bubbles may come from initialization!
+            success = ws.wfc();
+            if !success {
+                break;
+            }
+        }
+
+        if ws.size >= opt.size {
+            break;
+        }
+    }
+
+    // one last wfc to make sure things are cleaned up
+
+    // print stats
+    println!("gen: {}x{} cells, {} bubbles",
+        ws.width,
+        ws.height,
+        ws.bubbles.len()
     );
     println!("in: {} cycles, {:?}",
         ws.bubble_cycles,
         ws.bubble_time
+    );
+    println!("wfc: {}x{} tiles, {} constraints",
+        ws.cwidth, ws.cheight,
+        // note each tile has 4 directional constraints
+        TILES.len()*4
+    );
+    println!("in: {}/{} attempts, {} cycles, {} propagations, {:?}",
+        ws.wfc_attempts,
+        opt.attempts,
+        ws.wfc_cycles,
+        ws.wfc_propagations,
+        ws.wfc_time,
     );
 
     // render small map
@@ -896,22 +980,9 @@ fn main() {
         }
     }
 
-    // render tile map using wave function collapse
+    // render tile
     if opt.tile_map {
-        let tsuccess = ws.wfc();
         let (twidth, theight, tmap) = ws.render_tile_map();
-        println!("scaled: {}x{} tiles, {} constraints",
-            twidth, theight,
-            // note each tile has 4 directional constraints
-            TILES.len()*4
-        );
-        println!("in: {}/{} attempts, {} cycles, {} propagations, {:?}",
-            ws.wfc_attempts,
-            opt.attempts,
-            ws.wfc_cycles,
-            ws.wfc_propagations,
-            ws.wfc_time,
-        );
 
         for y in 0..theight {
             for x in 0..twidth {
@@ -921,11 +992,11 @@ fn main() {
             }
             println!();
         }
+    }
 
-        if !tsuccess {
-            println!("failed to resolve constraints after {} attempts",
-                opt.attempts
-            );
-        }
+    if !success {
+        println!("failed to resolve constraints after {} attempts!",
+            opt.attempts
+        );
     }
 }
