@@ -191,7 +191,7 @@ impl WaveStation {
             r: smallest + self_.prng.poisson(bubble_p),
             parent: None,
         }));
-        self_.bubbles.push(bubble.clone());
+        self_.bubbles.push(Rc::clone(&bubble));
         self_.size += bubble.borrow().r;
 
         // generate requested size, note we may overshoot
@@ -256,9 +256,9 @@ impl WaveStation {
                 x: x,
                 y: y,
                 r: r,
-                parent: Some(parent.clone()),
+                parent: Some(Rc::clone(parent)),
             }));
-            self.bubbles.push(bubble.clone());
+            self.bubbles.push(Rc::clone(&bubble));
             self.size += r;
 
             // keep track of new bubbles/hallways that need an update if we
@@ -331,7 +331,7 @@ impl WaveStation {
                 }
 
                 if collides {
-                    self.delta_bubbles.push(bubble_.clone());
+                    self.delta_bubbles.push(Rc::clone(bubble_));
                 }
             }
         }
@@ -381,7 +381,7 @@ impl WaveStation {
                     }
 
                     if collides {
-                        self.delta_hallways.push(bubble_.clone());
+                        self.delta_hallways.push(Rc::clone(bubble_));
                     }
                 }
             }
