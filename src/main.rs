@@ -631,7 +631,12 @@ impl ConstraintSet {
 impl WaveStation {
     // evaluate any unresolved constraints in our constraint map
     // with wave-function collapse
-    fn wfc(&mut self) -> bool {
+    fn wfc(
+        &mut self,
+        // stuff for animating the wfc algorithm, this is really just for fun
+        mut anim_term: Option<&mut BackgroundTerminal>,
+        anim_sleep: Option<Duration>,
+    ) -> bool {
         let start = Instant::now();
 
         // lazily initialize our initial constraint map since wfc is
@@ -729,16 +734,23 @@ impl WaveStation {
         self.delta_bubbles.clear();
         self.delta_hallways.clear();
 
-        // TODO rm me
-        let (twidth, theight, tmap) = self.render_tile_map();
+        // animate wfc?
+        if let Some(term) = anim_term.as_mut() {
+            let (twidth, theight, tmap) = self.render_tile_map();
 
-        for y in 0..theight {
-            for x in 0..twidth {
-                print!("{}",
-                    char::from_u32(tmap[x+y*twidth] as u32).unwrap()
-                );
+            for y in 0..theight {
+                for x in 0..twidth {
+                    write!(term, "{}",
+                        char::from_u32(tmap[x+y*twidth] as u32).unwrap()
+                    ).unwrap();
+                }
+                writeln!(term).unwrap();
             }
-            println!();
+
+            term.swap();
+            if let Some(sleep) = anim_sleep {
+                thread::sleep(sleep);
+            }
         }
 
 
@@ -834,33 +846,60 @@ impl WaveStation {
                     }
                 }
 
-                // do we have unresolved constraints? choose the most-resolved
-                match unresolved.pop(&mut self.prng) {
-                    Some((_, x, y)) => {
-                        // randomly assign it to one of its options
-                        let mut c = self.cmap[x+y*self.cwidth];
-                        debug_assert!(c.count_ones() > 0);
-                        let choice = self.prng.range(
-                            0..c.count_ones() as usize
-                        );
-                        // figure out which bit this actually is, kinda
-                        // complicated
-                        for _ in 0..choice {
-                            c &= !(1 << (128-1-c.leading_zeros()));
-                        }
-                        c &= !((1 << (128-1-c.leading_zeros()))-1);
+                // animate wfc?
+                if let Some(term) = anim_term.as_mut() {
+                    let (twidth, theight, tmap) = self.render_tile_map();
 
-                        // update our map
-                        self.cmap[x+y*self.cwidth] = c;
-                        // propagate constraints to our neighbors
-                        if x > 0 { propagating.push((x-1, y)); }
-                        if y > 0 { propagating.push((x, y-1)); }
-                        if x < self.cwidth-1 { propagating.push((x+1, y)); }
-                        if y < self.cheight-1 { propagating.push((x, y+1)); }
+                    for y in 0..theight {
+                        for x in 0..twidth {
+                            write!(term, "{}",
+                                char::from_u32(tmap[x+y*twidth] as u32).unwrap()
+                            ).unwrap();
+                        }
+                        writeln!(term).unwrap();
                     }
-                    None => {
-                        success = true;
-                        break 'wfc;
+
+                    term.swap();
+                    if let Some(sleep) = anim_sleep {
+                        thread::sleep(sleep);
+                    }
+                }
+
+                // do we have unresolved constraints? choose the most-resolved
+                while propagating.len() == 0 {
+                    match unresolved.pop(&mut self.prng) {
+                        Some((_, x, y)) => {
+                            // randomly assign it to one of its options
+                            let mut c = self.cmap[x+y*self.cwidth];
+                            debug_assert!(c.count_ones() > 0);
+                            if c.count_ones() > 1 {
+                                let choice = self.prng.range(
+                                    0..c.count_ones() as usize
+                                );
+                                // figure out which bit this actually is, kinda
+                                // complicated
+                                for _ in 0..choice {
+                                    c &= !(1 << (128-1-c.leading_zeros()));
+                                }
+                                c &= !((1 << (128-1-c.leading_zeros()))-1);
+
+                                // update our map
+                                self.cmap[x+y*self.cwidth] = c;
+                                // propagate constraints to our neighbors
+                                if x > 0 { propagating.push((x-1, y)); }
+                                if y > 0 { propagating.push((x, y-1)); }
+                                if x < self.cwidth-1 {
+                                    propagating.push((x+1, y));
+                                }
+                                if y < self.cheight-1 {
+                                    propagating.push((x, y+1));
+                                }
+                            }
+                        }
+                        None => {
+                            success = true;
+                            break 'wfc;
+                        }
                     }
                 }
             }
@@ -883,6 +922,14 @@ impl WaveStation {
                     x if x.count_ones() == 1 => {
                         TILES[128-1-x.leading_zeros() as usize].ascii
                     },
+                    x if x.count_ones() == 2 => b"22",
+                    x if x.count_ones() == 3 => b"33",
+                    x if x.count_ones() == 4 => b"44",
+                    x if x.count_ones() == 5 => b"55",
+                    x if x.count_ones() == 6 => b"66",
+                    x if x.count_ones() == 7 => b"77",
+                    x if x.count_ones() == 8 => b"88",
+                    x if x.count_ones() == 9 => b"99",
                     _ => b"??",
                 };
                 tmap[(x+y*self.cwidth)*2 .. (x+y*self.cwidth)*2+2]
@@ -986,6 +1033,10 @@ struct Opt {
     #[structopt(long)]
     anim_bubbles: bool,
 
+    /// Animate wave-function collapse algorithm.
+    #[structopt(long)]
+    anim_tiles: bool,
+
     /// Limit the number of anim lines rendered.
     #[structopt(long, parse(try_from_str=parse_usize))]
     anim_lines: Option<usize>,
@@ -997,6 +1048,10 @@ struct Opt {
     /// Artificial sleep between bubbles generation for animations in seconds.
     #[structopt(long)]
     bubble_sleep: Option<f64>,
+
+    /// Artificial sleep between decisions in wfc.
+    #[structopt(long)]
+    tile_sleep: Option<f64>,
 }
 
 fn main() {
@@ -1024,7 +1079,7 @@ fn main() {
     println!("seed: 0x{:016x}", ws.seed);
 
     // create background thread for animations
-    let mut background = if opt.anim_bubbles {
+    let mut term = if opt.anim_bubbles || opt.anim_tiles {
         Some(BackgroundTerminal::new(
             opt.anim_lines,
             opt.anim_sleep.map(|sleep|
@@ -1045,26 +1100,35 @@ fn main() {
 
         // render bubble animation if requested
         if opt.anim_bubbles {
-            let background = background.as_mut().unwrap();
+            let term = term.as_mut().unwrap();
             let (bwidth, bheight, bmap) = ws.render_bubble_map();
 
             for y in 0..bheight {
                 for x in 0..bwidth {
-                    write!(background, "{}",
+                    write!(term, "{}",
                         char::from_u32(bmap[x+y*bwidth] as u32).unwrap()
                     ).unwrap();
                 }
-                writeln!(background).unwrap();
+                writeln!(term).unwrap();
             }
 
-            background.swap();
+            term.swap();
         }
 
         if opt.tile_map {
             // perform wfc on any new bubbles
             //
             // new bubbles may come from initialization!
-            success = ws.wfc();
+            success = ws.wfc(
+                if opt.anim_tiles {
+                    Some(term.as_mut().unwrap())
+                } else {
+                    None
+                },
+                opt.tile_sleep.map(|sleep|
+                    Duration::from_millis((sleep*1000.0) as u64)
+                ),
+            );
             if !success {
                 break;
             }
@@ -1081,7 +1145,7 @@ fn main() {
     }
 
     // cleanup background terminal for animations here
-    drop(background);
+    drop(term);
 
     // one last wfc to make sure things are cleaned up
 

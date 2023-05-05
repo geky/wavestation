@@ -7,7 +7,8 @@ use std::mem;
 use std::io::{self, Write};
 
 
-// a cla`ss for rendering things to the terminal in a background thread
+// a class for rendering things to the terminal in a background thread
+#[derive(Debug)]
 pub struct BackgroundTerminal {
     foreground: Vec<u8>,
     shared: Arc<Mutex<(bool, Vec<u8>)>>,
@@ -19,8 +20,8 @@ impl BackgroundTerminal {
         limit: Option<usize>,
         sleep: Option<Duration>,
     ) -> Self {
-        // assume 10ms sleep interval by default
-        let sleep = sleep.unwrap_or_else(|| Duration::from_millis(10));
+        // assume 100ms sleep interval by default
+        let sleep = sleep.unwrap_or_else(|| Duration::from_millis(100));
 
         let shared = Arc::new(Mutex::new((false, vec![])));
         let handle = thread::spawn({
