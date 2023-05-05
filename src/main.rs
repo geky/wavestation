@@ -10,13 +10,17 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, hash_map, btree_map};
-use std::io;
+use std::io::{self, Write};
 use std::num;
 use std::str::FromStr;
 use std::time::{Instant, Duration};
+use std::thread;
 
 mod constraints;
 use constraints::*;
+
+mod background_terminal;
+use background_terminal::*;
 
 
 //// prng stuff ////
@@ -971,12 +975,28 @@ struct Opt {
     #[structopt(long, default_value="1000", parse(try_from_str=parse_u64))]
     attempts: u64,
 
-    /// How much station size to generate at once
+    /// How much station size to generate at once.
     ///
     /// Larger values may increase performance, but at a risk of increasing
     /// wfc failure
     #[structopt(long, default_value="1", parse(try_from_str=parse_usize))]
     chunk_size: usize,
+
+    /// Animate bubble generation algorithm.
+    #[structopt(long)]
+    anim_bubbles: bool,
+
+    /// Limit the number of anim lines rendered.
+    #[structopt(long, parse(try_from_str=parse_usize))]
+    anim_lines: Option<usize>,
+
+    /// Sleep between anim frame updates in seconds.
+    #[structopt(long)]
+    anim_sleep: Option<f64>,
+
+    /// Artificial sleep between bubbles generation for animations in seconds.
+    #[structopt(long)]
+    bubble_sleep: Option<f64>,
 }
 
 fn main() {
@@ -1003,12 +1023,41 @@ fn main() {
     );
     println!("seed: 0x{:016x}", ws.seed);
 
+    // create background thread for animations
+    let mut background = if opt.anim_bubbles {
+        Some(BackgroundTerminal::new(
+            opt.anim_lines,
+            opt.anim_sleep.map(|sleep|
+                Duration::from_millis((sleep*1000.0) as u64)
+            ),
+        ))
+    } else {
+        None
+    };
+
     // generate in chunks to avoid wfc failures
     let mut success = true;
     loop {
         // generate bubbles
         if opt.size > ws.size {
             ws.gen_bubbles(cmp::min(opt.chunk_size, opt.size-ws.size));
+        }
+
+        // render bubble animation if requested
+        if opt.anim_bubbles {
+            let background = background.as_mut().unwrap();
+            let (bwidth, bheight, bmap) = ws.render_bubble_map();
+
+            for y in 0..bheight {
+                for x in 0..bwidth {
+                    write!(background, "{}",
+                        char::from_u32(bmap[x+y*bwidth] as u32).unwrap()
+                    ).unwrap();
+                }
+                writeln!(background).unwrap();
+            }
+
+            background.swap();
         }
 
         if opt.tile_map {
@@ -1021,10 +1070,18 @@ fn main() {
             }
         }
 
+        // sleep after bubble generation if requested
+        if let Some(sleep) = opt.bubble_sleep {
+            thread::sleep(Duration::from_millis((sleep*1000.0) as u64));
+        }
+
         if ws.size >= opt.size {
             break;
         }
     }
+
+    // cleanup background terminal for animations here
+    drop(background);
 
     // one last wfc to make sure things are cleaned up
 
