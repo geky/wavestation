@@ -117,7 +117,8 @@ struct WaveStation {
     cwidth: usize,
     cheight: usize,
     cmap: Vec<u128>,
-    delta: Vec<Rc<RefCell<Bubble>>>,
+    delta_bubbles: Vec<Rc<RefCell<Bubble>>>,
+    delta_hallways: Vec<Rc<RefCell<Bubble>>>,
 
     // generation config
     bubble_p: f64,
@@ -165,7 +166,8 @@ impl WaveStation {
             cwidth: 0,
             cheight: 0,
             cmap: vec![],
-            delta: vec![],
+            delta_bubbles: vec![],
+            delta_hallways: vec![],
 
             bubble_p: bubble_p,
             hallway_p: hallway_p,
@@ -259,16 +261,131 @@ impl WaveStation {
             self.bubbles.push(bubble.clone());
             self.size += r;
 
-            // keep track of new bubbles if we have a constraint map
-            if self.cmap.len() > 0 {
-                self.delta.push(bubble);
-            }
+            // keep track of new bubbles/hallways that need an update if we
+            // have an existing constraint map
+            self.delta_bubble(&bubble);
         }
 
         self.center();
 
         let stop = Instant::now();
         self.bubble_time += stop.duration_since(start);
+    }
+
+    fn delta_bubble(&mut self, bubble: &Rc<RefCell<Bubble>>) {
+        // do nothing if we have no constraint map, we'll just update all
+        // bubbles in this case
+        if self.cmap.len() == 0 {
+            return;
+        }
+
+        // copy any new/outdated bubbles into the delta_bubbles/delta_hallways
+        // sets
+        //
+        // we need to consider all:
+        // 1. new bubbles
+        // 2. their parents
+        // 3. any hallways they collide with
+        // 4. any bubbles their hallway collides with
+
+        // collect any bubbles our new hallway collides with, this
+        // should include our new bubble and our parent, but may include
+        // more bubbles
+        let delta_i = self.delta_bubbles.len();
+        if let Some(parent) = &bubble.borrow().parent {
+            let a_x = bubble.borrow().x;
+            let a_y = bubble.borrow().y;
+            let b_x = parent.borrow().x;
+            let b_y = parent.borrow().y;
+            for bubble_ in &self.bubbles {
+                let x = bubble_.borrow().x;
+                let y = bubble_.borrow().y;
+                let r = bubble_.borrow().r;
+                let mut collides = false;
+
+                // naive line/circle collision detection
+                //
+                // this could be made faster with a bit of math,
+                // but math is hard
+                for a_x_ in cmp::min(a_x, b_x) ..= cmp::max(a_x, b_x) {
+                    if
+                        distsq(
+                            (x as isize, y as isize),
+                            (a_x_ as isize, a_y as isize)
+                        ) <= sq(r)
+                    {
+                        collides = true;
+                        break;
+                    }
+                }
+                for a_y_ in cmp::min(a_y, b_y) ..= cmp::max(a_y, b_y) {
+                    if
+                        distsq(
+                            (x as isize, y as isize),
+                            (a_x as isize, a_y_ as isize)
+                        ) <= sq(r)
+                    {
+                        collides = true;
+                        break;
+                    }
+                }
+
+                if collides {
+                    self.delta_bubbles.push(bubble_.clone());
+                }
+            }
+        }
+
+        // collect any hallways our bubbles collide with
+        //
+        // note we store this as the destination bubble so we can take
+        // advantage of automatic updates when centering
+
+        for bubble in &self.delta_bubbles[delta_i..] {
+            let x = bubble.borrow().x;
+            let y = bubble.borrow().y;
+            let r = bubble.borrow().r;
+            for bubble_ in &self.bubbles {
+                if let Some(parent) = &bubble_.borrow().parent {
+                    let a_x = bubble_.borrow().x;
+                    let a_y = bubble_.borrow().y;
+                    let b_x = parent.borrow().x;
+                    let b_y = parent.borrow().y;
+                    let mut collides = false;
+
+                    // naive line/circle collision detection
+                    //
+                    // this could be made faster with a bit of math,
+                    // but math is hard
+                    for a_x_ in cmp::min(a_x, b_x) ..= cmp::max(a_x, b_x) {
+                        if
+                            distsq(
+                                (x as isize, y as isize),
+                                (a_x_ as isize, a_y as isize)
+                            ) <= sq(r)
+                        {
+                            collides = true;
+                            break;
+                        }
+                    }
+                    for a_y_ in cmp::min(a_y, b_y) ..= cmp::max(a_y, b_y) {
+                        if
+                            distsq(
+                                (x as isize, y as isize),
+                                (a_x as isize, a_y_ as isize)
+                            ) <= sq(r)
+                        {
+                            collides = true;
+                            break;
+                        }
+                    }
+
+                    if collides {
+                        self.delta_hallways.push(bubble_.clone());
+                    }
+                }
+            }
+        }
     }
 
     fn center(&mut self) {
@@ -379,8 +496,10 @@ impl WaveStation {
             for y_ in 0..self.height {
                 for x_ in 0..self.width {
                     if
-                        distsq((x_ as isize, y_ as isize), (x as isize, y as isize))
-                            <= sq(r)
+                        distsq(
+                            (x_ as isize, y_ as isize),
+                            (x as isize, y as isize)
+                        ) <= sq(r)
                     {
                         bmap[x_+y_*self.width] = b'.';
                     }
@@ -514,131 +633,23 @@ impl WaveStation {
         // lazily initialize our initial constraint map since wfc is
         // expensive and may not be used, by default all constraints
         // should be space
-        let delta = match self.cmap.len() {
+        let (delta_bubbles, delta_hallways) = match self.cmap.len() {
             0 =>  {
                 self.cwidth = self.width*self.scale;
                 self.cheight = self.height*self.scale;
                 self.cmap = vec![TILE_SPACE; self.cwidth*self.cheight];
-                &self.bubbles
+
+                // run wfc over all bubbles
+                (&self.bubbles, &self.bubbles)
             },
             _ => {
-                &self.delta
+                // only run wfc on new/oudated bubbles/hallways
+                (&self.delta_bubbles, &self.delta_hallways)
             }
         };
 
-        // update our constraint map with changes to bubble map
-        //
-        // we need to consider all:
-        // 1. new bubbles
-        // 2. their parents
-        // 3. any hallways they collide with
-        // 4. any bubbles their hallway collides with
-
-        // collect any bubbles our new hallways collide with, this
-        // should include our new bubble and our parent
-        let mut delta_bubbles: Vec<Rc<RefCell<Bubble>>> = vec![];
-        for bubble in delta {
-            if let Some(parent) = &bubble.borrow().parent {
-                let a_x = bubble.borrow().x;
-                let a_y = bubble.borrow().y;
-                let b_x = parent.borrow().x;
-                let b_y = parent.borrow().y;
-                for bubble_ in &self.bubbles {
-                    let x = bubble_.borrow().x;
-                    let y = bubble_.borrow().y;
-                    let r = bubble_.borrow().r;
-                    let mut collides = false;
-
-                    // TODO cleanup?
-                    // naive line/circle collision detection
-                    //
-                    // this could be made faster with a bit of math,
-                    // but math is hard
-                    for a_x_ in cmp::min(a_x, b_x) ..= cmp::max(a_x, b_x) {
-                        if
-                            distsq(
-                                (x as isize, y as isize),
-                                (a_x_ as isize, a_y as isize)
-                            ) <= sq(r)
-                        {
-                            collides = true;
-                            break;
-                        }
-                    }
-                    for a_y_ in cmp::min(a_y, b_y) ..= cmp::max(a_y, b_y) {
-                        if
-                            distsq(
-                                (x as isize, y as isize),
-                                (a_x as isize, a_y_ as isize)
-                            ) <= sq(r)
-                        {
-                            collides = true;
-                            break;
-                        }
-                    }
-
-                    if collides {
-                        delta_bubbles.push(bubble_.clone());
-                    }
-                }
-            }
-        }
-
-        // collect any hallways our bubbles collide with
-        let mut delta_hallways: Vec<((usize, usize), (usize, usize))> = vec![];
-        for bubble in &delta_bubbles {
-            let x = bubble.borrow().x;
-            let y = bubble.borrow().y;
-            let r = bubble.borrow().r;
-            for bubble_ in &self.bubbles {
-                if let Some(parent) = &bubble_.borrow().parent {
-                    let a_x = bubble_.borrow().x;
-                    let a_y = bubble_.borrow().y;
-                    let b_x = parent.borrow().x;
-                    let b_y = parent.borrow().y;
-                    let mut collides = false;
-
-                    // TODO cleanup?
-                    // naive line/circle collision detection
-                    //
-                    // this could be made faster with a bit of math,
-                    // but math is hard
-                    for a_x_ in cmp::min(a_x, b_x) ..= cmp::max(a_x, b_x) {
-                        if
-                            distsq(
-                                (x as isize, y as isize),
-                                (a_x_ as isize, a_y as isize)
-                            ) <= sq(r)
-                        {
-                            collides = true;
-                            break;
-                        }
-                    }
-                    for a_y_ in cmp::min(a_y, b_y) ..= cmp::max(a_y, b_y) {
-                        if
-                            distsq(
-                                (x as isize, y as isize),
-                                (a_x as isize, a_y_ as isize)
-                            ) <= sq(r)
-                        {
-                            collides = true;
-                            break;
-                        }
-                    }
-
-                    if collides {
-                        delta_hallways.push((
-                            (a_x as usize, a_y as usize),
-                            (b_x as usize, b_y as usize)
-                        ));
-                    }
-                }
-            }
-        }
-        
-
         // mark bubbles as not space
-        for bubble in &delta_bubbles {
+        for bubble in delta_bubbles {
             let x = bubble.borrow().x as usize * self.scale;
             let y = bubble.borrow().y as usize * self.scale;
             let r = bubble.borrow().r * self.scale;
@@ -658,31 +669,25 @@ impl WaveStation {
         }
 
         // mark hallway walls as not space
-        for ((a_x, a_y), (b_x, b_y)) in &delta_hallways {
-            let a_x = a_x * self.scale;
-            let a_y = a_y * self.scale;
-            let b_x = b_x * self.scale;
-            let b_y = b_y * self.scale;
+        for bubble in delta_hallways {
+            if let Some(parent) = &bubble.borrow().parent {
+                let a_x = bubble.borrow().x as usize * self.scale;
+                let a_y = bubble.borrow().y as usize * self.scale;
+                let b_x = parent.borrow().x as usize * self.scale;
+                let b_y = parent.borrow().y as usize * self.scale;
 
-            for a_x_ in cmp::min(a_x, b_x) ..= cmp::max(a_x, b_x) {
-                for r in 0..(self.scale+1)/2 {
-                    if self.cmap[a_x_+(a_y+r)*self.cwidth] == TILE_SPACE {
+                for a_x_ in cmp::min(a_x, b_x) ..= cmp::max(a_x, b_x) {
+                    for r in 0..(self.scale+1)/2 {
                         self.cmap[a_x_+(a_y+r)*self.cwidth]
                             = TILE_ALL & !TILE_SPACE;
-                    }
-                    if self.cmap[a_x_+(a_y-r)*self.cwidth] == TILE_SPACE {
                         self.cmap[a_x_+(a_y-r)*self.cwidth]
                             = TILE_ALL & !TILE_SPACE;
                     }
                 }
-            }
-            for a_y in cmp::min(a_y, b_y) ..= cmp::max(a_y, b_y) {
-                for r in 0..(self.scale+1)/2 {
-                    if self.cmap[(a_x+r)+a_y*self.cwidth] == TILE_SPACE {
+                for a_y in cmp::min(a_y, b_y) ..= cmp::max(a_y, b_y) {
+                    for r in 0..(self.scale+1)/2 {
                         self.cmap[(a_x+r)+a_y*self.cwidth]
                             = TILE_ALL & !TILE_SPACE;
-                    }
-                    if self.cmap[(a_x-r)+a_y*self.cwidth] == TILE_SPACE {
                         self.cmap[(a_x-r)+a_y*self.cwidth]
                             = TILE_ALL & !TILE_SPACE;
                     }
@@ -691,25 +696,34 @@ impl WaveStation {
         }
 
         // but hallways themselves as required floor
-        for ((a_x, a_y), (b_x, b_y)) in &delta_hallways {
-            let a_x = a_x * self.scale;
-            let a_y = a_y * self.scale;
-            let b_x = b_x * self.scale;
-            let b_y = b_y * self.scale;
+        //
+        // note we just consider all of the hallways here! this fixes issues
+        // with hallway<->hallway intersection without needing another
+        // collision detection algorithm
+        //
+        // these should allways be floors anyways
+        for bubble in &self.bubbles {
+            if let Some(parent) = &bubble.borrow().parent {
+                let a_x = bubble.borrow().x as usize * self.scale;
+                let a_y = bubble.borrow().y as usize * self.scale;
+                let b_x = parent.borrow().x as usize * self.scale;
+                let b_y = parent.borrow().y as usize * self.scale;
 
-            for a_x_ in cmp::min(a_x, b_x) ..= cmp::max(a_x, b_x) {
-                self.cmap[a_x_+a_y*self.cwidth] = TILE_FLOOR;
-                self.cmap[a_x_+a_y*self.cwidth] = TILE_FLOOR;
-            }
-            for a_y in cmp::min(a_y, b_y) ..= cmp::max(a_y, b_y) {
-                self.cmap[a_x+a_y*self.cwidth] = TILE_FLOOR;
-                self.cmap[a_x+a_y*self.cwidth] = TILE_FLOOR;
+                for a_x_ in cmp::min(a_x, b_x) ..= cmp::max(a_x, b_x) {
+                    self.cmap[a_x_+a_y*self.cwidth] = TILE_FLOOR;
+                    self.cmap[a_x_+a_y*self.cwidth] = TILE_FLOOR;
+                }
+                for a_y in cmp::min(a_y, b_y) ..= cmp::max(a_y, b_y) {
+                    self.cmap[a_x+a_y*self.cwidth] = TILE_FLOOR;
+                    self.cmap[a_x+a_y*self.cwidth] = TILE_FLOOR;
+                }
             }
         }
 
-        // reset our delta, these bubbles are now at least represented
+        // reset our deltas, these bubbles are now at least represented
         // in our constraint map
-        self.delta.clear();
+        self.delta_bubbles.clear();
+        self.delta_hallways.clear();
 
         // TODO rm me
         let (twidth, theight, tmap) = self.render_tile_map();
@@ -778,7 +792,8 @@ impl WaveStation {
                         }
                         c &= mask;
 
-                        // does any of our possibilities contradict our neighbor?
+                        // does any of our possibilities contradict our
+                        // neighbor?
                         for i in 0..TILES.len() {
                             if
                                 c & (1 << i) != 0
@@ -824,7 +839,8 @@ impl WaveStation {
                         let choice = self.prng.range(
                             0..c.count_ones() as usize
                         );
-                        // figure out which bit this actually is, kinda complicated
+                        // figure out which bit this actually is, kinda
+                        // complicated
                         for _ in 0..choice {
                             c &= !(1 << (128-1-c.leading_zeros()));
                         }
