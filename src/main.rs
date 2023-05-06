@@ -3,6 +3,8 @@
 
 use structopt::StructOpt;
 use rand::{self, RngCore};
+use serde::{self, Serialize};
+use serde::ser::SerializeSeq;
 
 use std::ops::RangeBounds;
 use std::ops::Bound;
@@ -11,10 +13,12 @@ use std::rc::Rc;
 use std::cmp;
 use std::collections::{BTreeMap, HashMap, hash_map, btree_map};
 use std::io::{self, Write};
+use std::fs::File;
 use std::num;
 use std::str::FromStr;
 use std::time::{Instant, Duration};
 use std::thread;
+use std::path::PathBuf;
 
 mod constraints;
 use constraints::*;
@@ -941,6 +945,103 @@ impl WaveStation {
     }
 }
 
+// serialization
+//
+// WISHLIST deserialization
+impl Serialize for WaveStation {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S
+    ) -> Result<S::Ok, S::Error> {
+        // serialize bubbles, note parent always precedes the current
+        // bubble, this may help deserialization
+        struct SerializeBubbles<'a>(&'a [Rc<RefCell<Bubble>>]);
+
+        impl Serialize for SerializeBubbles<'_> {
+            fn serialize<S: serde::Serializer>(
+                &self,
+                serializer: S
+            ) -> Result<S::Ok, S::Error> {
+                #[derive(Serialize)]
+                struct SerializeBubble {
+                    x: usize,
+                    y: usize,
+                    r: usize,
+                    parent: Option<usize>,
+                }
+
+                // keep track of parents we've seen
+                let mut parent_map: HashMap<*const RefCell<Bubble>,  usize>
+                    = HashMap::new();
+
+                let mut s = serializer.serialize_seq(Some(self.0.len()))?;
+                for (i, bubble) in self.0.iter().enumerate() {
+                    parent_map.insert(Rc::as_ptr(&bubble), i);
+
+                    // find parent index
+                    let parent = bubble.borrow().parent.as_ref().map(|parent| {
+                        *parent_map.get(&Rc::as_ptr(&parent)).unwrap()
+                    });
+
+                    s.serialize_element(&SerializeBubble{
+                        x: bubble.borrow().x as usize,
+                        y: bubble.borrow().y as usize,
+                        r: bubble.borrow().r,
+                        parent: parent,
+                    })?;
+                }
+                s.end()
+            }
+        }
+
+        // serialize constraints to tiles
+        struct SerializeConstraints<'a>(&'a [u128]);
+
+        impl Serialize for SerializeConstraints<'_> {
+            fn serialize<S: serde::Serializer>(
+                &self,
+                serializer: S
+            ) -> Result<S::Ok, S::Error> {
+                let mut s = serializer.serialize_seq(Some(self.0.len()))?;
+                for c in self.0 {
+                    s.serialize_element(&(128-1-c.leading_zeros()))?;
+                }
+                s.end()
+            }
+        }
+
+        #[derive(Serialize)]
+        struct SerializeTiles<'a> {
+            width: usize,
+            height: usize,
+            tiles: SerializeConstraints<'a>,
+        }
+
+        #[derive(Serialize)]
+        struct SerializeWaveState<'a> {
+            seed: u64,
+            prng: u64,
+            bubbles: SerializeBubbles<'a>,
+            tiles: Option<SerializeTiles<'a>>,
+        }
+
+        SerializeWaveState{
+            seed: self.seed,
+            prng: self.prng.0,
+            bubbles: SerializeBubbles(&self.bubbles),
+            tiles: if self.cmap.len() > 0 {
+                Some(SerializeTiles{
+                    width: self.cwidth,
+                    height: self.cheight,
+                    tiles: SerializeConstraints(&self.cmap),
+                })
+            } else {
+                None
+            },
+        }.serialize(serializer)
+    }
+}
+
 
 fn parse_u64(s: &str) -> Result<u64, num::ParseIntError> {
     if s.starts_with("0x") {
@@ -993,15 +1094,15 @@ struct Opt {
     clearance: usize,
 
     /// Show a small map.
-    #[structopt(short, long, alias="small")]
+    #[structopt(short, long, visible_alias="small")]
     small_map: bool,
 
     /// Show a bubble map.
-    #[structopt(short, long, alias="bubble")]
+    #[structopt(short, long, visible_alias="bubble")]
     bubble_map: bool,
 
     /// Show a tiled map
-    #[structopt(short, long, alias="tile")]
+    #[structopt(short, long, visible_alias="tile")]
     tile_map: bool,
 
     /// Width of small map.
@@ -1029,6 +1130,10 @@ struct Opt {
     #[structopt(long, default_value="1", parse(try_from_str=parse_usize))]
     chunk_size: usize,
 
+    /// Animate bubble generation algorithm, showing the small map.
+    #[structopt(long)]
+    anim_small: bool,
+
     /// Animate bubble generation algorithm.
     #[structopt(long)]
     anim_bubbles: bool,
@@ -1052,15 +1157,28 @@ struct Opt {
     /// Artificial sleep between decisions in wfc.
     #[structopt(long)]
     tile_sleep: Option<f64>,
+
+    /// Output generation station in json.
+    #[structopt(short, long)]
+    output: Option<PathBuf>,
+
+    /// Only generate and output bubbles if outputing json.
+    #[structopt(long)]
+    only_bubbles: bool,
 }
 
 fn main() {
     // parse opts
     let mut opt = Opt::from_args();
-    // if no maps are explicitly requested, assume a bubble map
+    // if no maps/outputs are explicitly requested, assume a bubble map
     //
     // mostly because this one is my favorite
-    if !opt.small_map && !opt.bubble_map && !opt.tile_map {
+    if
+        !opt.small_map
+            && !opt.bubble_map
+            && !opt.tile_map
+            && !opt.output.is_some()
+    {
         opt.bubble_map = true;
     }
     let opt = opt;
@@ -1079,7 +1197,7 @@ fn main() {
     println!("seed: 0x{:016x}", ws.seed);
 
     // create background thread for animations
-    let mut term = if opt.anim_bubbles || opt.anim_tiles {
+    let mut term = if opt.anim_small || opt.anim_bubbles || opt.anim_tiles {
         Some(BackgroundTerminal::new(
             opt.anim_lines,
             opt.anim_sleep.map(|sleep|
@@ -1096,6 +1214,26 @@ fn main() {
         // generate bubbles
         if opt.size > ws.size {
             ws.gen_bubbles(cmp::min(opt.chunk_size, opt.size-ws.size));
+        }
+
+        // render small animation if requested
+        if opt.anim_small {
+            let term = term.as_mut().unwrap();
+            let (swidth, sheight, smap) = ws.render_small_map(
+                opt.small_width,
+                opt.small_height,
+            );
+
+            for y in 0..sheight {
+                for x in 0..swidth {
+                    write!(term, "{}",
+                        char::from_u32(smap[x+y*swidth] as u32).unwrap()
+                    ).unwrap();
+                }
+                writeln!(term).unwrap();
+            }
+
+            term.swap();
         }
 
         // render bubble animation if requested
@@ -1115,7 +1253,7 @@ fn main() {
             term.swap();
         }
 
-        if opt.tile_map {
+        if opt.tile_map || (opt.output.is_some() && !opt.only_bubbles) {
             // perform wfc on any new bubbles
             //
             // new bubbles may come from initialization!
@@ -1214,6 +1352,15 @@ fn main() {
                 );
             }
             println!();
+        }
+    }
+
+    // write to json if requested
+    if success {
+        if let Some(output) = opt.output {
+            let mut f = File::create(&output).unwrap();
+            serde_json::to_writer(&mut f, &ws).unwrap();
+            println!("updated {:?}", output);
         }
     }
 
