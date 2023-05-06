@@ -1,4 +1,6 @@
-Generates interesting space-station maps as ascii art
+Generates interesting space-station maps as ascii art:
+
+![animation of station generation](images/wavestation4.gif)
 
 This algorithm uses a sort of wonky [randomized Prim's algorithm][prim] using
 circle&lt;-&gt;circle collision detection to build a high-level system of
